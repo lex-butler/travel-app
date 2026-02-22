@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '@/services/auth'
+import { useAuthStore } from '@/stores/authStore'
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -170,25 +171,40 @@ function SignUpForm({ onSuccess }: { onSuccess: () => void }) {
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [googleError, setGoogleError] = useState('')
   const [googleLoading, setGoogleLoading] = useState(false)
+  const user = useAuthStore((s) => s.user)
+  const authLoading = useAuthStore((s) => s.loading)
+
+  const redirect = searchParams.get('redirect') ?? '/trips'
+
+  // Handle Google redirect flow — when the user returns from Google OAuth,
+  // onAuthStateChanged sets the user; navigate to the redirect target.
+  // sessionStorage preserves the redirect target across the full-page OAuth redirect.
+  useEffect(() => {
+    if (!authLoading && user) {
+      const target = sessionStorage.getItem('postAuthRedirect') || redirect
+      sessionStorage.removeItem('postAuthRedirect')
+      navigate(target, { replace: true })
+    }
+  }, [user, authLoading, navigate, redirect])
 
   function onSuccess() {
-    navigate('/trips', { replace: true })
+    navigate(redirect, { replace: true })
   }
 
   async function handleGoogle() {
     setGoogleError('')
     setGoogleLoading(true)
+    // Save redirect target before navigating away — the OAuth redirect clears URL params
+    sessionStorage.setItem('postAuthRedirect', redirect)
     try {
+      // signInWithGoogle uses redirect — browser navigates away, no return value
       await signInWithGoogle()
-      onSuccess()
-    } catch (err: unknown) {
-      const code = (err as { code?: string }).code
-      if (code !== 'auth/popup-closed-by-user' && code !== 'auth/cancelled-popup-request') {
-        setGoogleError('Google sign-in failed. Please try again.')
-      }
-    } finally {
+    } catch {
+      sessionStorage.removeItem('postAuthRedirect')
+      setGoogleError('Google sign-in failed. Please try again.')
       setGoogleLoading(false)
     }
   }

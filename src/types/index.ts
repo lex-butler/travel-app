@@ -36,6 +36,8 @@ export interface Trip {
   phase: TripPhase
   budget: number | null
   currency: string
+  // userId → free-form availability note, used when dateStatus === 'poll'
+  availability: Record<string, string>
   createdAt: Timestamp
   updatedAt: Timestamp
 }

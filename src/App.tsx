@@ -5,11 +5,13 @@ import { auth } from '@/config/firebase'
 import { useAuthStore } from '@/stores/authStore'
 import AppLayout from '@/components/layout/AppLayout'
 import AuthGuard from '@/components/layout/AuthGuard'
+import { handleGoogleRedirectResult } from '@/services/auth'
 
 // Lazy-load pages for code splitting
 const LoginPage = lazy(() => import('@/pages/auth/LoginPage'))
 const TripsListPage = lazy(() => import('@/pages/trips/TripsListPage'))
 const TripDetailPage = lazy(() => import('@/pages/trips/TripDetailPage'))
+const NewTripPage = lazy(() => import('@/pages/trips/NewTripPage'))
 const PlanningPage = lazy(() => import('@/pages/planning/PlanningPage'))
 const InvitePage = lazy(() => import('@/pages/invite/InvitePage'))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
@@ -19,6 +21,9 @@ function App() {
   const setLoading = useAuthStore((s) => s.setLoading)
 
   useEffect(() => {
+    // Handle Google redirect result (upserts user doc after OAuth redirect)
+    handleGoogleRedirectResult().catch(console.error)
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user)
       setLoading(false)
@@ -42,6 +47,9 @@ function App() {
 
           {/* Protected routes */}
           <Route element={<AuthGuard />}>
+            {/* Full-screen pages (no nav) */}
+            <Route path="/trips/new" element={<NewTripPage />} />
+
             <Route element={<AppLayout />}>
               <Route index element={<Navigate to="/trips" replace />} />
               <Route path="/trips" element={<TripsListPage />} />

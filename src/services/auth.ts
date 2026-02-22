@@ -1,6 +1,7 @@
 import {
   GoogleAuthProvider,
-  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile,
@@ -30,15 +31,22 @@ async function upsertUserDoc(uid: string, data: { email: string; displayName: st
   }
 }
 
+// Initiates the Google redirect flow — browser navigates away, no return value
 export async function signInWithGoogle() {
-  const result = await signInWithPopup(auth, googleProvider)
-  const { uid, email, displayName, photoURL } = result.user
-  await upsertUserDoc(uid, {
-    email: email ?? '',
-    displayName: displayName ?? 'Traveler',
-    photoURL,
-  })
-  return result.user
+  await signInWithRedirect(auth, googleProvider)
+}
+
+// Call this on app mount to handle the result when Google redirects back
+export async function handleGoogleRedirectResult() {
+  const result = await getRedirectResult(auth)
+  if (result) {
+    const { uid, email, displayName, photoURL } = result.user
+    await upsertUserDoc(uid, {
+      email: email ?? '',
+      displayName: displayName ?? 'Traveler',
+      photoURL,
+    })
+  }
 }
 
 export async function signInWithEmail(email: string, password: string) {
