@@ -33,6 +33,16 @@ service cloud.firestore {
       // Only the owner can delete
       allow delete: if request.auth != null
                     && resource.data.ownerId == request.auth.uid;
+
+      // Destinations subcollection — trip members only
+      match /destinations/{destId} {
+        allow read: if request.auth != null
+                    && request.auth.uid in get(/databases/$(database)/documents/trips/$(tripId)).data.memberIds;
+        allow create: if request.auth != null
+                      && request.auth.uid in get(/databases/$(database)/documents/trips/$(tripId)).data.memberIds;
+        allow update: if request.auth != null
+                      && request.auth.uid in get(/databases/$(database)/documents/trips/$(tripId)).data.memberIds;
+      }
     }
 
     // Invites — stored by token (token is the document ID)

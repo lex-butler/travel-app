@@ -5,6 +5,7 @@ import { auth } from '@/config/firebase'
 import { useAuthStore } from '@/stores/authStore'
 import AppLayout from '@/components/layout/AppLayout'
 import AuthGuard from '@/components/layout/AuthGuard'
+import TripLayout from '@/components/layout/TripLayout'
 import { handleGoogleRedirectResult } from '@/services/auth'
 
 // Lazy-load pages for code splitting
@@ -13,6 +14,9 @@ const TripsListPage = lazy(() => import('@/pages/trips/TripsListPage'))
 const TripDetailPage = lazy(() => import('@/pages/trips/TripDetailPage'))
 const NewTripPage = lazy(() => import('@/pages/trips/NewTripPage'))
 const PlanningPage = lazy(() => import('@/pages/planning/PlanningPage'))
+const TripDestinationsPage = lazy(() => import('@/pages/trips/TripDestinationsPage'))
+const TripCrewPage = lazy(() => import('@/pages/trips/TripCrewPage'))
+const TripSettingsPage = lazy(() => import('@/pages/trips/TripSettingsPage'))
 const InvitePage = lazy(() => import('@/pages/invite/InvitePage'))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 
@@ -53,8 +57,14 @@ function App() {
             <Route element={<AppLayout />}>
               <Route index element={<Navigate to="/trips" replace />} />
               <Route path="/trips" element={<TripsListPage />} />
-              <Route path="/trips/:tripId" element={<TripDetailPage />} />
-              <Route path="/trips/:tripId/planning" element={<PlanningPage />} />
+
+              <Route element={<TripLayout />}>
+                <Route path="/trips/:tripId" element={<TripDetailPage />} />
+                <Route path="/trips/:tripId/destinations" element={<TripDestinationsPage />} />
+                <Route path="/trips/:tripId/crew" element={<TripCrewPage />} />
+                <Route path="/trips/:tripId/planning" element={<PlanningPage />} />
+                <Route path="/trips/:tripId/settings" element={<TripSettingsPage />} />
+              </Route>
             </Route>
           </Route>
 

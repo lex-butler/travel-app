@@ -1,5 +1,6 @@
 import {
   GoogleAuthProvider,
+  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   signInWithEmailAndPassword,
@@ -11,6 +12,15 @@ import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore'
 import { auth, db } from '@/config/firebase'
 
 const googleProvider = new GoogleAuthProvider()
+
+// iOS (all browsers on iOS use WebKit and block popups) must use redirect
+function isIOS() {
+  return (
+    /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    // iPadOS 13+ reports as MacIntel with touch support
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  )
+}
 
 // Upsert the user document in Firestore after any sign-in
 async function upsertUserDoc(uid: string, data: { email: string; displayName: string; photoURL: string | null }) {
@@ -31,12 +41,26 @@ async function upsertUserDoc(uid: string, data: { email: string; displayName: st
   }
 }
 
-// Initiates the Google redirect flow — browser navigates away, no return value
+// Sign in with Google.
+// Desktop: opens a popup and returns the user directly.
+// iOS: initiates a redirect (browser navigates away); returns null.
+//      Result is handled by handleGoogleRedirectResult() on the next page load.
 export async function signInWithGoogle() {
-  await signInWithRedirect(auth, googleProvider)
+  if (isIOS()) {
+    await signInWithRedirect(auth, googleProvider)
+    return null
+  }
+  const result = await signInWithPopup(auth, googleProvider)
+  const { uid, email, displayName, photoURL } = result.user
+  await upsertUserDoc(uid, {
+    email: email ?? '',
+    displayName: displayName ?? 'Traveler',
+    photoURL,
+  })
+  return result.user
 }
 
-// Call this on app mount to handle the result when Google redirects back
+// Call on app mount — handles the return from Google redirect (iOS only)
 export async function handleGoogleRedirectResult() {
   const result = await getRedirectResult(auth)
   if (result) {

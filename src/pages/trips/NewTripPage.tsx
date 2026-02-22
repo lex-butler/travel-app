@@ -4,6 +4,7 @@ import { X, MapPin, Calendar, Users, Loader2, CheckCircle2, Circle } from 'lucid
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { cn } from '@/lib/utils'
 import { createTrip } from '@/services/tripService'
 import { useAuthStore } from '@/stores/authStore'
 import type { Trip } from '@/types'
@@ -34,13 +35,18 @@ const INITIAL: WizardData = {
 
 function StepIndicator({ current, total }: { current: number; total: number }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-1">
       {Array.from({ length: total }).map((_, i) => (
         <div
           key={i}
-          className={`h-2 rounded-full transition-all duration-300 ${
-            i < current ? 'bg-primary w-6' : i === current ? 'bg-primary w-8' : 'bg-muted w-6'
-          }`}
+          className={cn(
+            "h-1 rounded-full transition-all duration-500",
+            i < current
+              ? "bg-primary w-3 opacity-40"
+              : i === current
+                ? "bg-primary w-6 shadow-[0_0_8px_rgba(var(--primary-rgb),0.3)]"
+                : "bg-muted w-3"
+          )}
         />
       ))}
     </div>
@@ -62,19 +68,19 @@ function OptionCard({
     <button
       type="button"
       onClick={onClick}
-      className={`w-full rounded-xl border-2 p-4 text-left transition-all flex items-start justify-between gap-3 ${
+      className={cn(
+        "w-full rounded-xl border border-white/40 p-4 text-left transition-all duration-300 flex items-center justify-between gap-4 group",
         selected
-          ? 'border-primary bg-primary/8 shadow-sm'
-          : 'border-border bg-card hover:border-primary/40 hover:bg-muted/40'
-      }`}
+          ? "border-primary bg-primary/5 shadow-md shadow-primary/5 ring-1 ring-primary/10"
+          : "glass hover:border-primary/30 hover:bg-white/40 dark:hover:bg-white/5"
+      )}
     >
       <div className="flex-1">{children}</div>
-      <div className="shrink-0 mt-0.5">
-        {selected ? (
-          <CheckCircle2 className="h-5 w-5 text-primary" />
-        ) : (
-          <Circle className="h-5 w-5 text-muted-foreground/40" />
-        )}
+      <div className={cn(
+        "shrink-0 h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all duration-300",
+        selected ? "border-primary bg-primary text-white scale-105" : "border-muted-foreground/20"
+      )}>
+        {selected && <CheckCircle2 className="h-3 w-3" />}
       </div>
     </button>
   )
@@ -90,43 +96,48 @@ function StepWho({
   onChange: (patch: Partial<WizardData>) => void
 }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-slide-up">
       <div className="space-y-1">
-        <h2 className="text-2xl font-bold">Who's coming?</h2>
-        <p className="text-muted-foreground">Solo adventure or a group trip?</p>
+        <h2 className="text-2xl font-black tracking-tight">Who's coming?</h2>
+        <p className="text-sm text-muted-foreground font-medium">Solo adventure or a group trip?</p>
       </div>
 
-      <div className="space-y-2">
-        <Label>Trip type</Label>
-        <div className="space-y-2">
+      <div className="space-y-3">
+        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Trip type</Label>
+        <div className="space-y-2.5">
           <OptionCard
             selected={data.tripType === 'solo'}
             onClick={() =>
               onChange({
                 tripType: 'solo',
                 estimatedSize: '',
-                // If they were going to poll, reset to flexible since solo has no group to poll
                 dateStatus: data.dateStatus === 'poll' ? 'flexible' : data.dateStatus,
               })
             }
           >
-            <p className="font-medium">Just me</p>
-            <p className="text-sm text-muted-foreground mt-0.5">Solo trip</p>
+            <div>
+              <p className="font-bold text-base">Just me</p>
+              <p className="text-xs text-muted-foreground">Solo wanderlust</p>
+            </div>
           </OptionCard>
 
           <OptionCard
             selected={data.tripType === 'group'}
             onClick={() => onChange({ tripType: 'group' })}
           >
-            <p className="font-medium">Group trip</p>
-            <p className="text-sm text-muted-foreground mt-0.5">Multiple people traveling together</p>
+            <div>
+              <p className="font-bold text-base">Group trip</p>
+              <p className="text-xs text-muted-foreground">The whole squad</p>
+            </div>
           </OptionCard>
         </div>
       </div>
 
       {data.tripType === 'group' && (
-        <div className="space-y-2">
-          <Label htmlFor="group-size">Estimated group size (optional)</Label>
+        <div className="space-y-2 animate-fade-in">
+          <Label htmlFor="group-size" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">
+            Estimated group size (optional)
+          </Label>
           <Input
             id="group-size"
             type="number"
@@ -135,6 +146,7 @@ function StepWho({
             placeholder="e.g. 6"
             value={data.estimatedSize}
             onChange={(e) => onChange({ estimatedSize: e.target.value })}
+            className="h-11 rounded-xl glass border-white/40 focus:ring-primary/20 transition-all font-bold text-base"
           />
         </div>
       )}
@@ -154,54 +166,66 @@ function StepWhere({
   error: string
 }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-slide-up">
       <div className="space-y-1">
-        <h2 className="text-2xl font-bold">Where are you going?</h2>
-        <p className="text-muted-foreground">Name your trip and pick a destination.</p>
+        <h2 className="text-2xl font-black tracking-tight">Where to?</h2>
+        <p className="text-sm text-muted-foreground font-medium">Name your journey and pick a destination.</p>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="trip-name">Trip name</Label>
+        <Label htmlFor="trip-name" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Trip name</Label>
         <Input
           id="trip-name"
           placeholder="e.g. Summer in Europe"
           value={data.name}
           onChange={(e) => onChange({ name: e.target.value })}
           autoFocus
+          className="h-11 rounded-xl glass border-white/40 focus:ring-primary/20 transition-all font-bold text-base"
         />
       </div>
 
       <div className="space-y-3">
-        <Label>Destination</Label>
-        <div className="space-y-2">
+        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Destination</Label>
+        <div className="space-y-2.5">
           <OptionCard
             selected={data.destinationStatus === 'decided'}
             onClick={() => onChange({ destinationStatus: 'decided' })}
           >
-            <p className="font-medium">I know where we're going</p>
-            <p className="text-sm text-muted-foreground mt-0.5">Destination is already decided</p>
+            <div>
+              <p className="font-bold text-base">I know the spot</p>
+              <p className="text-xs text-muted-foreground">Destination is already decided</p>
+            </div>
           </OptionCard>
 
           {data.destinationStatus === 'decided' && (
-            <Input
-              placeholder="e.g. Barcelona, Spain"
-              value={data.destination}
-              onChange={(e) => onChange({ destination: e.target.value })}
-              autoFocus
-            />
+            <div className="animate-scale-in">
+              <Input
+                placeholder="e.g. Barcelona, Spain"
+                value={data.destination}
+                onChange={(e) => onChange({ destination: e.target.value })}
+                autoFocus
+                className="h-11 rounded-xl glass bg-white/40 dark:bg-white/5 border-primary/20 focus:ring-primary/20 font-bold text-base"
+              />
+            </div>
           )}
 
           <OptionCard
             selected={data.destinationStatus === 'tbd'}
             onClick={() => onChange({ destinationStatus: 'tbd', destination: '' })}
           >
-            <p className="font-medium">Not sure yet</p>
-            <p className="text-sm text-muted-foreground mt-0.5">We'll vote or decide later</p>
+            <div>
+              <p className="font-bold text-base">Not sure yet</p>
+              <p className="text-xs text-muted-foreground">We'll vote or decide later</p>
+            </div>
           </OptionCard>
         </div>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && (
+        <p className="text-[11px] font-bold text-destructive bg-destructive/5 px-4 py-2 rounded-xl border border-destructive/10 animate-fade-in">
+          {error}
+        </p>
+      )}
     </div>
   )
 }
@@ -220,30 +244,35 @@ function StepWhen({
   const isSolo = data.tripType === 'solo'
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-slide-up">
       <div className="space-y-1">
-        <h2 className="text-2xl font-bold">When are you going?</h2>
-        <p className="text-muted-foreground">Set your dates or figure them out later.</p>
+        <h2 className="text-2xl font-black tracking-tight">When?</h2>
+        <p className="text-sm text-muted-foreground font-medium">Set your dates or figure them out later.</p>
       </div>
 
-      <div className="space-y-2">
-        <Label>Dates</Label>
-        <div className="space-y-2">
+      <div className="space-y-3">
+        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Dates</Label>
+        <div className="space-y-2.5">
           <OptionCard
             selected={data.dateStatus === 'decided'}
             onClick={() => onChange({ dateStatus: 'decided' })}
           >
-            <p className="font-medium">Dates are set</p>
-            <p className="text-sm text-muted-foreground mt-0.5">We know exactly when</p>
+            <div>
+              <p className="font-bold text-base">Dates are set</p>
+              <p className="text-xs text-muted-foreground">We know exactly when</p>
+            </div>
           </OptionCard>
 
           {data.dateStatus === 'decided' && (
-            <Input
-              placeholder="e.g. July 14 – July 21, 2025"
-              value={data.dates}
-              onChange={(e) => onChange({ dates: e.target.value })}
-              autoFocus
-            />
+            <div className="animate-scale-in">
+              <Input
+                placeholder="e.g. July 14 – July 21"
+                value={data.dates}
+                onChange={(e) => onChange({ dates: e.target.value })}
+                autoFocus
+                className="h-11 rounded-xl glass bg-white/40 dark:bg-white/5 border-primary/20 focus:ring-primary/20 font-bold text-base"
+              />
+            </div>
           )}
 
           {!isSolo && (
@@ -251,10 +280,12 @@ function StepWhen({
               selected={data.dateStatus === 'poll'}
               onClick={() => onChange({ dateStatus: 'poll', dates: '' })}
             >
-              <p className="font-medium">Find availability</p>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                Everyone marks when they're free — the best overlap gets highlighted
-              </p>
+              <div>
+                <p className="font-bold text-base">Find availability</p>
+                <p className="text-xs text-muted-foreground">
+                  Everyone marks when they're free
+                </p>
+              </div>
             </OptionCard>
           )}
 
@@ -262,13 +293,19 @@ function StepWhen({
             selected={data.dateStatus === 'flexible'}
             onClick={() => onChange({ dateStatus: 'flexible', dates: '' })}
           >
-            <p className="font-medium">Flexible</p>
-            <p className="text-sm text-muted-foreground mt-0.5">We'll figure it out</p>
+            <div>
+              <p className="font-bold text-base">Flexible</p>
+              <p className="text-xs text-muted-foreground">TBD</p>
+            </div>
           </OptionCard>
         </div>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && (
+        <p className="text-[11px] font-bold text-destructive bg-destructive/5 px-4 py-2 rounded-xl border border-destructive/10 animate-fade-in">
+          {error}
+        </p>
+      )}
     </div>
   )
 }
@@ -341,44 +378,56 @@ export default function NewTripPage() {
   const StepIcon = STEP_ICONS[step]
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="relative min-h-[90vh] flex flex-col overflow-hidden animate-fade-in">
+      {/* Background Decor */}
+      <div className="absolute top-0 right-0 h-[400px] w-[400px] bg-primary/5 rounded-full blur-[100px] -mr-32 -mt-32" />
+
       {/* Header */}
-      <header className="flex items-center justify-between border-b px-4 py-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-            <StepIcon className="h-4 w-4 text-primary" />
+      <header className="flex items-center justify-between px-6 py-4 max-w-2xl mx-auto w-full animate-slide-down">
+        <div className="flex items-center gap-3.5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl premium-gradient text-white shadow-lg shadow-primary/10">
+            <StepIcon className="h-4.5 w-4.5" />
           </div>
-          <span className="text-sm font-medium text-muted-foreground">
-            Step {step + 1} of {TOTAL_STEPS}
-          </span>
+          <div className="flex flex-col">
+            <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
+              Step {step + 1} of {TOTAL_STEPS}
+            </span>
+            <StepIndicator current={step} total={TOTAL_STEPS} />
+          </div>
         </div>
-        <div className="flex items-center gap-4">
-          <StepIndicator current={step} total={TOTAL_STEPS} />
-          <button
-            type="button"
-            onClick={() => navigate('/trips')}
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => {
+            if (step > 0 && !window.confirm('Leave trip creation? Your progress will be lost.')) return
+            navigate('/trips')
+          }}
+          className="rounded-xl h-9 w-9 text-muted-foreground hover:bg-slate-100"
+        >
+          <X className="h-5 w-5" />
+        </Button>
       </header>
 
       {/* Content */}
-      <div className="flex flex-1 items-start justify-center px-4 py-10">
-        <div className="w-full max-w-md">
+      <main className="flex-1 flex items-center justify-center px-6 py-6 sm:py-12">
+        <div className="w-full max-w-sm">
           {step === 0 && <StepWho data={data} onChange={onChange} />}
           {step === 1 && <StepWhere data={data} onChange={onChange} error={error} />}
           {step === 2 && <StepWhen data={data} onChange={onChange} error={error} />}
         </div>
-      </div>
+      </main>
 
       {/* Footer */}
-      <footer className="border-t px-4 py-4">
-        <div className="mx-auto flex w-full max-w-md justify-between gap-3">
+      <footer className="px-6 py-6 sm:py-10 max-w-2xl mx-auto w-full animate-slide-up">
+        <div className="flex items-center justify-between gap-4">
           {step > 0 ? (
-            <Button variant="outline" onClick={() => setStep((s) => s - 1)} disabled={submitting}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setStep((s) => s - 1)}
+              disabled={submitting}
+              className="rounded-xl h-10 px-6 font-bold"
+            >
               Back
             </Button>
           ) : (
@@ -386,16 +435,26 @@ export default function NewTripPage() {
           )}
 
           {step < TOTAL_STEPS - 1 ? (
-            <Button onClick={handleNext}>Next</Button>
+            <Button
+              onClick={handleNext}
+              className="rounded-xl h-10 px-8 font-black shadow-lg shadow-primary/10 group"
+            >
+              Continue
+              <Circle className="ml-2 h-1.5 w-1.5 fill-current opacity-40 transition-transform group-hover:scale-125" />
+            </Button>
           ) : (
-            <Button onClick={handleCreate} disabled={submitting}>
+            <Button
+              onClick={handleCreate}
+              disabled={submitting}
+              className="rounded-xl h-10 px-8 font-black shadow-lg shadow-primary/10"
+            >
               {submitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Creating…
                 </>
               ) : (
-                'Create trip'
+                'Launch Trip'
               )}
             </Button>
           )}

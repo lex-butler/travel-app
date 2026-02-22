@@ -25,6 +25,8 @@ export interface CreateTripInput {
   tripType: Trip['tripType']
   estimatedSize: number | null
   ownerId: string
+  imageUrl?: string
+  memberIds?: string[]
 }
 
 // ─── Create ───────────────────────────────────────────────────────────────────
@@ -40,11 +42,13 @@ export async function createTrip(input: CreateTripInput): Promise<string> {
     estimatedSize: input.estimatedSize,
     ownerId: input.ownerId,
     coLeadIds: [],
-    memberIds: [input.ownerId],
+    memberIds: input.memberIds || [input.ownerId],
     phase: 'planning',
     budget: null,
     currency: 'USD',
+    imageUrl: input.imageUrl || null,
     availability: {},
+    archived: false,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   })
@@ -76,6 +80,9 @@ export interface MemberProfile {
   displayName: string
   photoURL: string | null
   email: string
+  homeCity: string | null
+  homeLat: number | null
+  homeLng: number | null
 }
 
 export async function getUserProfiles(userIds: string[]): Promise<MemberProfile[]> {
@@ -117,4 +124,62 @@ export function subscribeToTrip(
     }
     callback({ id: snap.id, ...snap.data() } as Trip)
   })
+}
+
+// ─── Update / Archive ─────────────────────────────────────────────────────────
+
+export type TripUpdatableFields = Partial<Pick<Trip,
+  'name' | 'destination' | 'destinationStatus' | 'dates' | 'dateStatus' |
+  'tripType' | 'estimatedSize' | 'budget' | 'currency' | 'phase' | 'imageUrl'
+>>
+
+export async function updateTrip(tripId: string, updates: TripUpdatableFields): Promise<void> {
+  await updateDoc(doc(db, 'trips', tripId), {
+    ...updates,
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export async function archiveTrip(tripId: string): Promise<void> {
+  await updateDoc(doc(db, 'trips', tripId), {
+    archived: true,
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export async function unarchiveTrip(tripId: string): Promise<void> {
+  await updateDoc(doc(db, 'trips', tripId), {
+    archived: false,
+    updatedAt: serverTimestamp(),
+  })
+}
+
+// ─── Member management ───────────────────────────────────────────────────────
+
+export async function removeMember(tripId: string, userId: string): Promise<void> {
+  const { arrayRemove } = await import('firebase/firestore')
+  await updateDoc(doc(db, 'trips', tripId), {
+    memberIds: arrayRemove(userId),
+    coLeadIds: arrayRemove(userId),
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export async function updateMemberRole(
+  tripId: string,
+  userId: string,
+  role: 'host' | 'traveler',
+): Promise<void> {
+  const { arrayUnion, arrayRemove } = await import('firebase/firestore')
+  if (role === 'host') {
+    await updateDoc(doc(db, 'trips', tripId), {
+      coLeadIds: arrayUnion(userId),
+      updatedAt: serverTimestamp(),
+    })
+  } else {
+    await updateDoc(doc(db, 'trips', tripId), {
+      coLeadIds: arrayRemove(userId),
+      updatedAt: serverTimestamp(),
+    })
+  }
 }

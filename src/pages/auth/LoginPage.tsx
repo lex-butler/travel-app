@@ -179,13 +179,11 @@ export default function LoginPage() {
 
   const redirect = searchParams.get('redirect') ?? '/trips'
 
-  // Handle Google redirect flow — when the user returns from Google OAuth,
-  // onAuthStateChanged sets the user; navigate to the redirect target.
-  // sessionStorage preserves the redirect target across the full-page OAuth redirect.
   useEffect(() => {
     if (!authLoading && user) {
-      const target = sessionStorage.getItem('postAuthRedirect') || redirect
+      const target = sessionStorage.getItem('postAuthRedirect') || localStorage.getItem('postAuthRedirect') || redirect
       sessionStorage.removeItem('postAuthRedirect')
+      localStorage.removeItem('postAuthRedirect')
       navigate(target, { replace: true })
     }
   }, [user, authLoading, navigate, redirect])
@@ -197,74 +195,99 @@ export default function LoginPage() {
   async function handleGoogle() {
     setGoogleError('')
     setGoogleLoading(true)
-    // Save redirect target before navigating away — the OAuth redirect clears URL params
+    // Save redirect target in case the iOS redirect flow navigates away and back
     sessionStorage.setItem('postAuthRedirect', redirect)
+    localStorage.setItem('postAuthRedirect', redirect)
     try {
-      // signInWithGoogle uses redirect — browser navigates away, no return value
-      await signInWithGoogle()
+      const user = await signInWithGoogle()
+      if (user) {
+        // Popup completed — navigate now
+        sessionStorage.removeItem('postAuthRedirect')
+        localStorage.removeItem('postAuthRedirect')
+        onSuccess()
+      }
+      // If user is null, iOS redirect is in progress — browser navigates away
     } catch {
       sessionStorage.removeItem('postAuthRedirect')
+      localStorage.removeItem('postAuthRedirect')
       setGoogleError('Google sign-in failed. Please try again.')
       setGoogleLoading(false)
     }
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4">
-      <div className="w-full max-w-sm space-y-6">
-        {/* Logo */}
-        <div className="flex flex-col items-center gap-2 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Plane className="h-6 w-6" />
+    <div className="relative min-h-screen flex items-center justify-center p-6 overflow-hidden bg-slate-50 animate-fade-in">
+      {/* Subtle Background Accent */}
+      <div className="absolute top-0 right-0 h-[500px] w-[500px] bg-primary/5 rounded-full blur-[100px] -mr-32 -mt-32" />
+      <div className="absolute bottom-0 left-0 h-[500px] w-[500px] bg-primary/5 rounded-full blur-[100px] -ml-32 -mb-32" />
+
+      <div className="w-full max-w-sm space-y-8 relative z-10 animate-slide-up">
+        {/* Logo Section */}
+        <div className="flex flex-col items-center text-center space-y-3">
+          <div className="p-3 rounded-2xl premium-gradient shadow-lg shadow-primary/10 transition-transform hover:scale-105 duration-300">
+            <Plane className="h-6 w-6 text-white" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">TripSync</h1>
-          <p className="text-sm text-muted-foreground">Plan trips together, stress-free</p>
+          <div className="space-y-0.5">
+            <h1 className="text-3xl font-black tracking-tight text-slate-900">
+              TripSync
+            </h1>
+            <p className="text-muted-foreground font-medium text-sm">
+              Plan your next escape, together.
+            </p>
+          </div>
         </div>
 
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-lg">Welcome</CardTitle>
-            <CardDescription>Sign in to your account or create a new one</CardDescription>
+        <Card className="glass border-white/40 rounded-2xl shadow-xl overflow-hidden p-0">
+          <CardHeader className="pt-8 pb-4 px-6 text-center">
+            <CardTitle className="text-xl font-black tracking-tight">Welcome back</CardTitle>
+            <CardDescription className="text-muted-foreground/80 font-medium text-xs">
+              Join your squad and start planning.
+            </CardDescription>
           </CardHeader>
 
-          <CardContent className="space-y-4">
-            {/* Google */}
+          <CardContent className="px-6 pb-8 space-y-6">
             <Button
               variant="outline"
-              className="w-full"
+              className="w-full h-11 rounded-xl border border-primary/10 font-bold transition-all hover:bg-slate-50"
               onClick={handleGoogle}
               disabled={googleLoading}
             >
               <GoogleIcon />
-              {googleLoading ? 'Connecting…' : 'Continue with Google'}
+              <span className="ml-2.5 text-xs">
+                {googleLoading ? 'Connecting…' : 'Continue with Google'}
+              </span>
             </Button>
-
-            {googleError && <p className="text-sm text-destructive text-center">{googleError}</p>}
 
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
+                <span className="w-full border-t border-slate-200/60" />
               </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">or</span>
+              <div className="relative flex justify-center text-[9px] uppercase tracking-[0.2em] font-black text-muted-foreground/60">
+                <span className="bg-white px-3 rounded-full py-0.5">or</span>
               </div>
             </div>
 
-            {/* Email tabs */}
-            <Tabs defaultValue="signin">
-              <TabsList className="w-full">
-                <TabsTrigger value="signin" className="flex-1">Sign in</TabsTrigger>
-                <TabsTrigger value="signup" className="flex-1">Create account</TabsTrigger>
+            <Tabs defaultValue="signin" className="w-full">
+              <TabsList className="grid w-full grid-cols-2 p-1 glass rounded-xl h-11 mb-6">
+                <TabsTrigger value="signin" className="rounded-lg font-bold text-xs data-[state=active]:shadow-sm">Sign in</TabsTrigger>
+                <TabsTrigger value="signup" className="rounded-lg font-bold text-xs data-[state=active]:shadow-sm">Create</TabsTrigger>
               </TabsList>
-              <TabsContent value="signin" className="pt-4">
+
+              <TabsContent value="signin" className="focus-visible:outline-none">
                 <SignInForm onSuccess={onSuccess} />
               </TabsContent>
-              <TabsContent value="signup" className="pt-4">
+              <TabsContent value="signup" className="focus-visible:outline-none">
                 <SignUpForm onSuccess={onSuccess} />
               </TabsContent>
             </Tabs>
           </CardContent>
         </Card>
+
+        {googleError && (
+          <p className="text-xs font-bold text-destructive bg-destructive/5 px-4 py-2.5 rounded-xl text-center border border-destructive/10 animate-fade-in">
+            {googleError}
+          </p>
+        )}
       </div>
     </div>
   )

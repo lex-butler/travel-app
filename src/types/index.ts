@@ -12,6 +12,9 @@ export interface User {
   pushNotificationsEnabled: boolean
   emailNotificationsEnabled: boolean
   fcmToken: string | null
+  homeCity: string | null
+  homeLat: number | null
+  homeLng: number | null
 }
 
 // ─── Trips ────────────────────────────────────────────────────────────────────
@@ -36,8 +39,10 @@ export interface Trip {
   phase: TripPhase
   budget: number | null
   currency: string
+  imageUrl?: string
   // userId → array of selected date ranges, used when dateStatus === 'poll'
   availability: Record<string, Array<{ start: string; end: string }>>
+  archived?: boolean
   createdAt: Timestamp
   updatedAt: Timestamp
 }
@@ -52,6 +57,9 @@ export interface Destination {
   addedBy: string
   votes: Record<string, 1 | 2 | 3>
   status: 'voting' | 'finalized'
+  lat: number | null
+  lng: number | null
+  comments: Record<string, string>  // userId → comment text
   createdAt: Timestamp
 }
 
