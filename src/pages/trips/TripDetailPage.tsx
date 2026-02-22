@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { MapPin, Calendar, Users, ArrowLeft, Loader2, Copy, Check, Link2, Mail, Share2, Pencil } from 'lucide-react'
+import { MapPin, Calendar, Users, ArrowLeft, Loader2, Copy, Check, Link2, Mail, Share2, X, DollarSign, Hotel, Map, Plane, Compass, Plus } from 'lucide-react'
+import { format, isSameDay } from 'date-fns'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,7 +12,8 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
-import { subscribeToTrip, updateMyAvailability } from '@/services/tripService'
+import { Calendar as CalendarWidget } from '@/components/ui/calendar'
+import { subscribeToTrip, updateMyAvailability, getUserProfiles, type MemberProfile, type DateRange } from '@/services/tripService'
 import { createInviteLink } from '@/services/inviteService'
 import { useAuthStore } from '@/stores/authStore'
 import { useTripStore } from '@/stores/tripStore'
@@ -121,30 +123,169 @@ function InviteDialog({
   )
 }
 
+// ─── Availability dialog ──────────────────────────────────────────────────────
+
+type RdpRange = { from: Date | undefined; to?: Date | undefined }
+
+function formatRange(r: DateRange): string {
+  const s = new Date(r.start + 'T00:00:00')
+  const e = new Date(r.end + 'T00:00:00')
+  return isSameDay(s, e) ? format(s, 'MMM d') : `${format(s, 'MMM d')} – ${format(e, 'MMM d')}`
+}
+
+function AvailabilityDialog({
+  trip,
+  userId,
+  open,
+  onClose,
+}: {
+  trip: Trip
+  userId: string | undefined
+  open: boolean
+  onClose: () => void
+}) {
+  const raw = userId ? (trip.availability?.[userId] ?? []) : []
+  const myRanges: DateRange[] = Array.isArray(raw) ? raw : []
+  const [selection, setSelection] = useState<RdpRange>({ from: undefined })
+  const [saving, setSaving] = useState(false)
+
+  const respondedCount = Object.keys(trip.availability ?? {}).length
+  const memberCount = trip.memberIds.length
+
+  async function addRange() {
+    if (!userId || !selection.from) return
+    const start = format(selection.from, 'yyyy-MM-dd')
+    const end = format(selection.to ?? selection.from, 'yyyy-MM-dd')
+    const updated = [...myRanges, { start, end }]
+    setSaving(true)
+    try {
+      await updateMyAvailability(trip.id, userId, updated)
+      setSelection({ from: undefined })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function removeRange(index: number) {
+    if (!userId) return
+    const updated = myRanges.filter((_, i) => i !== index)
+    await updateMyAvailability(trip.id, userId, updated)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-sm p-0 overflow-hidden gap-0">
+        {/* Coloured header — pr-10 leaves room for the DialogContent close button */}
+        <div className="bg-gradient-to-r from-blue-500 to-blue-400 px-6 pt-6 pb-5 pr-10">
+          <DialogHeader>
+            <DialogTitle className="text-white">Find availability</DialogTitle>
+            <DialogDescription className="text-white/80 mt-1">
+              {memberCount > 1
+                ? `${respondedCount} of ${memberCount} members have responded.`
+                : 'Add your dates. Invite your group so they can add theirs.'}
+            </DialogDescription>
+          </DialogHeader>
+        </div>
+
+        {/* Body */}
+        <div className="p-5 space-y-4">
+          {/* Calendar */}
+          <div className="flex justify-center border rounded-xl overflow-hidden">
+            <CalendarWidget
+              mode="range"
+              selected={selection}
+              onSelect={(range) => setSelection(range ?? { from: undefined })}
+              disabled={{ before: new Date() }}
+              numberOfMonths={1}
+            />
+          </div>
+
+          {/* Add button — only shown when a date is selected */}
+          {selection.from ? (
+            <Button
+              onClick={addRange}
+              disabled={saving}
+              className="w-full bg-emerald-500 hover:bg-emerald-600 text-white"
+            >
+              {saving
+                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                : <Plus className="mr-2 h-4 w-4" />}
+              Add {format(selection.from, 'MMM d')}
+              {selection.to && !isSameDay(selection.from, selection.to)
+                ? ` – ${format(selection.to, 'MMM d')}`
+                : ''}
+            </Button>
+          ) : (
+            <p className="text-center text-sm text-muted-foreground py-1">
+              Tap a date or drag to select a range
+            </p>
+          )}
+
+          {/* My added ranges */}
+          {myRanges.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Your availability
+              </p>
+              <div className="space-y-1">
+                {myRanges.map((r, i) => (
+                  <div key={i} className="flex items-center justify-between rounded-lg bg-muted/60 px-3 py-2">
+                    <span className="text-sm">{formatRange(r)}</span>
+                    <button
+                      onClick={() => removeRange(i)}
+                      className="text-muted-foreground hover:text-foreground transition-colors ml-2"
+                      aria-label="Remove"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ─── Action card ──────────────────────────────────────────────────────────────
+
+const COLOR_CLASSES = {
+  blue:    'bg-blue-500/15 text-blue-600',
+  violet:  'bg-violet-500/15 text-violet-600',
+  emerald: 'bg-emerald-500/15 text-emerald-600',
+  amber:   'bg-amber-500/15 text-amber-600',
+  rose:    'bg-rose-500/15 text-rose-600',
+  cyan:    'bg-cyan-500/15 text-cyan-600',
+} as const
+type CardColor = keyof typeof COLOR_CLASSES
 
 interface ActionCardProps {
   icon: React.ElementType
   title: string
   description: string
   highlight?: boolean
+  color?: CardColor
   onClick?: () => void
 }
 
-function ActionCard({ icon: Icon, title, description, highlight, onClick }: ActionCardProps) {
+function ActionCard({ icon: Icon, title, description, highlight, color, onClick }: ActionCardProps) {
+  const iconClass = highlight
+    ? 'bg-primary text-primary-foreground'
+    : color
+      ? COLOR_CLASSES[color]
+      : 'bg-muted text-muted-foreground'
+
   return (
     <Card
-      className={`transition-all hover:shadow-md ${onClick ? 'cursor-pointer' : ''} ${
-        highlight ? 'border-primary ring-1 ring-primary' : ''
+      className={`transition-all ${onClick ? 'cursor-pointer hover:shadow-md hover:-translate-y-0.5' : ''} ${
+        highlight ? 'border-primary ring-1 ring-primary shadow-sm' : ''
       }`}
       onClick={onClick}
     >
       <CardContent className="p-5">
-        <div
-          className={`flex h-10 w-10 items-center justify-center rounded-xl mb-3 ${
-            highlight ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-          }`}
-        >
+        <div className={`flex h-10 w-10 items-center justify-center rounded-xl mb-3 ${iconClass}`}>
           <Icon className="h-5 w-5" />
         </div>
         <p className="font-semibold text-sm">{title}</p>
@@ -154,215 +295,204 @@ function ActionCard({ icon: Icon, title, description, highlight, onClick }: Acti
   )
 }
 
-// ─── Availability section (shown when dateStatus === 'poll') ─────────────────
+// ─── Invite prompt (primary card when no one else has joined) ─────────────────
 
-function AvailabilitySection({
-  trip,
-  userId,
-  onInvite,
-}: {
-  trip: Trip
-  userId: string | undefined
-  onInvite: () => void
-}) {
-  const myDates = userId ? (trip.availability?.[userId] ?? '') : ''
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  function startEdit() {
-    setDraft(myDates)
-    setEditing(true)
-  }
-
-  async function handleSave() {
-    if (!userId) return
-    setSaving(true)
-    try {
-      await updateMyAvailability(trip.id, userId, draft.trim())
-      setEditing(false)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const respondedCount = Object.keys(trip.availability ?? {}).length
-  const memberCount = trip.memberIds.length
-  const isSolo = memberCount === 1
-
+function InvitePromptCard({ onInvite }: { onInvite: () => void }) {
   return (
-    <Card className="mb-6">
-      <CardContent className="p-5 space-y-4">
-        {/* Header row */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-              <Calendar className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <p className="font-semibold text-sm">Finding availability</p>
-              <p className="text-xs text-muted-foreground">
-                {isSolo
-                  ? 'Invite your group so everyone can share their dates'
-                  : `${respondedCount} of ${memberCount} members have responded`}
-              </p>
-            </div>
-          </div>
-          {isSolo && (
-            <Button variant="outline" size="sm" onClick={onInvite}>
-              <Users className="mr-1.5 h-3.5 w-3.5" />
-              Invite
-            </Button>
-          )}
+    <div className="mb-6 overflow-hidden rounded-2xl bg-gradient-to-r from-primary to-primary/75 shadow-md">
+      <div className="flex items-center gap-4 p-5">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm">
+          <Users className="h-6 w-6 text-white" />
         </div>
-
-        {/* Current user's availability */}
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Your available dates
-          </p>
-          {editing ? (
-            <div className="flex gap-2">
-              <Input
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder="e.g. June 1–15, July 10–20"
-                autoFocus
-              />
-              <Button size="sm" onClick={handleSave} disabled={saving}>
-                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save'}
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
-                Cancel
-              </Button>
-            </div>
-          ) : myDates ? (
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm">{myDates}</p>
-              <button
-                onClick={startEdit}
-                className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
-                aria-label="Edit availability"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={startEdit}
-              className="text-sm text-primary hover:underline transition-colors"
-            >
-              + Add your available dates
-            </button>
-          )}
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-white">Invite your group</p>
+          <p className="text-sm text-white/70 mt-0.5">Share a link to get everyone on board</p>
         </div>
-
-        {!isSolo && (
-          <p className="text-xs text-muted-foreground">
-            Once everyone responds, you'll be able to pick dates that work for the whole group.
-          </p>
-        )}
-      </CardContent>
-    </Card>
+        <Button
+          onClick={onInvite}
+          className="shrink-0 bg-white text-primary hover:bg-white/90 shadow-sm"
+        >
+          Invite
+        </Button>
+      </div>
+    </div>
   )
 }
 
 // ─── Scenario dashboards ──────────────────────────────────────────────────────
 
-function ScenarioA({ trip, onInvite }: { trip: Trip; onInvite: () => void }) {
+function ScenarioA({ trip, onAvailability }: { trip: Trip; onAvailability: () => void }) {
   const isPoll = trip.dateStatus === 'poll'
   return (
     <>
-      <div className="mb-6">
-        <p className="text-muted-foreground">Let's nail down the basics before planning details.</p>
+      <div className="mb-5">
+        <h2 className="font-semibold text-base">Next steps</h2>
+        <p className="text-sm text-muted-foreground mt-0.5">Let's nail down the basics before planning details.</p>
       </div>
-      {isPoll ? (
-        <div className="grid grid-cols-2 gap-3">
-          <ActionCard
-            icon={Users}
-            title="Invite people"
-            description="Get everyone sharing their availability"
-            highlight
-            onClick={onInvite}
-          />
-          <ActionCard icon={MapPin} title="Pick a destination" description="Add options and vote as a group" highlight />
-          <div className="col-span-2">
-            <ActionCard icon={MapPin} title="Budget" description="Set a rough budget estimate" />
-          </div>
+      <div className="grid grid-cols-2 gap-3">
+        {isPoll && (
+          <ActionCard icon={Calendar} title="Find availability" description="Mark when you're free" color="blue" highlight onClick={onAvailability} />
+        )}
+        <ActionCard icon={MapPin} title="Pick a destination" description="Add options and vote as a group" color="violet" highlight={!isPoll} />
+        {!isPoll && <ActionCard icon={Calendar} title="Set dates" description="Poll the group or set a window" color="blue" highlight />}
+        <div className="col-span-2">
+          <ActionCard icon={DollarSign} title="Budget" description="Set a rough budget estimate" color="emerald" />
         </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-3">
-          <ActionCard icon={Users} title="Invite people" description="Get your crew on board" highlight onClick={onInvite} />
-          <ActionCard icon={MapPin} title="Pick a destination" description="Add options and vote as a group" highlight />
-          <ActionCard icon={Calendar} title="Set dates" description="Poll the group or set a window" />
-          <ActionCard icon={MapPin} title="Budget" description="Set a rough budget estimate" />
-        </div>
-      )}
+      </div>
     </>
   )
 }
 
-function ScenarioB({ trip, onInvite }: { trip: Trip; onInvite: () => void }) {
+function ScenarioB({ trip, onAvailability }: { trip: Trip; onAvailability: () => void }) {
   const isPoll = trip.dateStatus === 'poll'
   return (
     <>
-      <div className="mb-6">
-        <p className="text-muted-foreground">
+      <div className="mb-5">
+        <h2 className="font-semibold text-base">Next steps</h2>
+        <p className="text-sm text-muted-foreground mt-0.5">
           Heading to <span className="font-medium text-foreground">{trip.destination}</span>
-          {isPoll ? ' — invite your group to find dates that work.' : ' — now let\'s lock in the dates.'}
+          {isPoll ? ' — find dates that work for everyone.' : ' — now let\'s lock in the dates.'}
         </p>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <ActionCard
-          icon={Users}
-          title="Invite people"
-          description={isPoll ? 'Get everyone sharing their availability' : 'Get your crew on board'}
-          highlight
-          onClick={onInvite}
-        />
         {isPoll
-          ? <ActionCard icon={MapPin} title="Accommodation" description="Start browsing where to stay" />
-          : <ActionCard icon={Calendar} title="Set dates" description="Poll the group or set a window" highlight />}
-        <ActionCard icon={MapPin} title="Explore places" description="Start adding spots to visit" />
-        <ActionCard icon={MapPin} title="Budget" description="Set a rough budget estimate" />
+          ? <ActionCard icon={Calendar} title="Find availability" description="Mark when you're free" color="blue" highlight onClick={onAvailability} />
+          : <ActionCard icon={Calendar} title="Set dates" description="Poll the group or set a window" color="blue" highlight />}
+        <ActionCard icon={Compass} title="Explore places" description="Start adding spots to visit" color="amber" />
+        <div className="col-span-2">
+          <ActionCard icon={DollarSign} title="Budget" description="Set a rough budget estimate" color="emerald" />
+        </div>
       </div>
     </>
   )
 }
 
-function ScenarioC({ trip, onInvite }: { trip: Trip; onInvite: () => void }) {
+function ScenarioC({ trip }: { trip: Trip }) {
   return (
     <>
-      <div className="mb-6">
-        <p className="text-muted-foreground">
+      <div className="mb-5">
+        <h2 className="font-semibold text-base">Next steps</h2>
+        <p className="text-sm text-muted-foreground mt-0.5">
           Dates locked in{trip.dates ? ` — ${trip.dates}` : ''}. Now decide where you're going.
         </p>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <ActionCard icon={MapPin} title="Pick a destination" description="Add options and vote as a group" highlight />
-        <ActionCard icon={Users} title="Invite people" description="Get your crew on board" onClick={onInvite} />
-        <ActionCard icon={MapPin} title="Budget" description="Set a rough budget estimate" />
-        <ActionCard icon={Calendar} title="Itinerary" description="Start planning day by day" />
+        <ActionCard icon={MapPin} title="Pick a destination" description="Add options and vote as a group" color="violet" highlight />
+        <ActionCard icon={DollarSign} title="Budget" description="Set a rough budget estimate" color="emerald" />
+        <div className="col-span-2">
+          <ActionCard icon={Map} title="Itinerary" description="Start planning day by day" color="cyan" />
+        </div>
       </div>
     </>
   )
 }
 
-function ScenarioD({ trip, onInvite }: { trip: Trip; onInvite: () => void }) {
+function ScenarioD({ trip }: { trip: Trip }) {
   return (
     <>
-      <div className="mb-6">
-        <p className="text-muted-foreground">
-          {trip.destination} · {trip.dates} — time to plan the details.
+      <div className="mb-5">
+        <h2 className="font-semibold text-base">Plan the details</h2>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          {trip.destination} · {trip.dates}
         </p>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <ActionCard icon={Calendar} title="Itinerary" description="Plan your days, add activities" highlight />
-        <ActionCard icon={MapPin} title="Accommodation" description="Find and vote on where to stay" />
-        <ActionCard icon={MapPin} title="Transport" description="Flights, cars, and transfers" />
-        <ActionCard icon={Users} title="Invite people" description="Add more to the trip" onClick={onInvite} />
+        <ActionCard icon={Map} title="Itinerary" description="Plan your days, add activities" color="cyan" highlight />
+        <ActionCard icon={Hotel} title="Accommodation" description="Find and vote on where to stay" color="rose" />
+        <ActionCard icon={Plane} title="Transport" description="Flights, cars, and transfers" color="blue" />
+        <ActionCard icon={DollarSign} title="Budget" description="Track and split expenses" color="emerald" />
       </div>
     </>
+  )
+}
+
+// ─── Members section ─────────────────────────────────────────────────────────
+
+function Avatar({ profile, size = 'md' }: { profile: MemberProfile; size?: 'sm' | 'md' }) {
+  const initials = profile.displayName
+    .split(' ')
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase()
+
+  const dim = size === 'sm' ? 'h-8 w-8 text-xs' : 'h-10 w-10 text-sm'
+
+  if (profile.photoURL) {
+    return (
+      <img
+        src={profile.photoURL}
+        alt={profile.displayName}
+        className={`${dim} rounded-full object-cover shrink-0`}
+      />
+    )
+  }
+  return (
+    <div className={`${dim} rounded-full bg-primary/10 text-primary font-semibold flex items-center justify-center shrink-0`}>
+      {initials}
+    </div>
+  )
+}
+
+function MembersSection({
+  trip,
+  currentUserId,
+  onInvite,
+}: {
+  trip: Trip
+  currentUserId: string | undefined
+  onInvite: () => void
+}) {
+  const [members, setMembers] = useState<MemberProfile[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    getUserProfiles(trip.memberIds).then((profiles) => {
+      if (!cancelled) setMembers(profiles)
+    })
+    return () => { cancelled = true }
+  }, [trip.memberIds])
+
+  function roleLabel(id: string) {
+    if (id === trip.ownerId) return 'Owner'
+    if (trip.coLeadIds.includes(id)) return 'Co-lead'
+    return 'Member'
+  }
+
+  return (
+    <Card className="mt-6">
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold">
+            Members{' '}
+            <span className="text-muted-foreground font-normal text-sm">· {trip.memberIds.length}</span>
+          </h2>
+          <button
+            onClick={onInvite}
+            className="text-xs font-medium text-primary hover:underline transition-colors"
+          >
+            + Invite
+          </button>
+        </div>
+        <div className="space-y-3">
+          {members.map((m) => (
+            <div key={m.id} className="flex items-center gap-3">
+              <Avatar profile={m} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">
+                  {m.displayName}
+                  {m.id === currentUserId && <span className="text-muted-foreground font-normal"> (you)</span>}
+                </p>
+                <p className="text-xs text-muted-foreground">{m.email}</p>
+              </div>
+              <span className="text-xs font-medium text-muted-foreground bg-muted px-2.5 py-0.5 rounded-full shrink-0">
+                {roleLabel(m.id)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -376,6 +506,7 @@ export default function TripDetailPage() {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [availabilityOpen, setAvailabilityOpen] = useState(false)
 
   useEffect(() => {
     if (!tripId) return
@@ -415,57 +546,64 @@ export default function TripDetailPage() {
 
   const destDecided = trip.destinationStatus === 'decided'
   const datesDecided = trip.dateStatus === 'decided'
+  const isSolo = trip.memberIds.length === 1
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-2xl">
-      {/* Back link */}
-      <Link
-        to="/trips"
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        My Trips
-      </Link>
-
-      {/* Trip header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold">{trip.name}</h1>
-        <div className="mt-2 flex flex-wrap gap-3 text-sm text-muted-foreground">
-          <span className="flex items-center gap-1.5">
-            <MapPin className="h-4 w-4" />
-            {destDecided && trip.destination ? trip.destination : 'Destination TBD'}
-          </span>
-          <span className="flex items-center gap-1.5">
-            <Calendar className="h-4 w-4" />
-            {datesDecided && trip.dates
-              ? trip.dates
-              : trip.dateStatus === 'poll'
-                ? 'Finding availability'
-                : 'Dates flexible'}
-          </span>
-          <button
-            className="flex items-center gap-1.5 hover:text-foreground transition-colors"
-            onClick={() => setInviteOpen(true)}
+    <div className="container mx-auto px-4 py-6 max-w-2xl">
+      {/* Hero header */}
+      <div className="mb-6 overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-primary/90 to-primary/70 shadow-lg">
+        <div className="p-6">
+          <Link
+            to="/trips"
+            className="inline-flex items-center gap-1.5 text-sm text-white/70 hover:text-white mb-4 transition-colors"
           >
-            <Link2 className="h-4 w-4" />
-            {trip.memberIds.length === 1 ? 'Just you · Invite others' : `${trip.memberIds.length} members`}
-          </button>
+            <ArrowLeft className="h-4 w-4" />
+            My Trips
+          </Link>
+          <h1 className="text-2xl font-bold text-white">{trip.name}</h1>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-medium text-white backdrop-blur-sm">
+              <MapPin className="h-3.5 w-3.5" />
+              {destDecided && trip.destination ? trip.destination : 'Destination TBD'}
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-medium text-white backdrop-blur-sm">
+              <Calendar className="h-3.5 w-3.5" />
+              {datesDecided && trip.dates
+                ? trip.dates
+                : trip.dateStatus === 'poll'
+                  ? 'Finding availability'
+                  : 'Dates flexible'}
+            </span>
+            <button
+              className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-medium text-white backdrop-blur-sm hover:bg-white/30 transition-colors"
+              onClick={() => setInviteOpen(true)}
+            >
+              <Link2 className="h-3.5 w-3.5" />
+              {trip.memberIds.length === 1 ? 'Just you · Invite' : `${trip.memberIds.length} members`}
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Availability section — shown when polling for dates */}
-      {trip.dateStatus === 'poll' && (
-        <AvailabilitySection trip={trip} userId={user?.uid} onInvite={() => setInviteOpen(true)} />
+      {/* Invite prompt — primary card when creator is the only member */}
+      {isSolo && trip.tripType === 'group' && (
+        <InvitePromptCard onInvite={() => setInviteOpen(true)} />
       )}
 
       {/* Context-aware dashboard */}
-      {!destDecided && !datesDecided && <ScenarioA trip={trip} onInvite={() => setInviteOpen(true)} />}
-      {destDecided && !datesDecided && <ScenarioB trip={trip} onInvite={() => setInviteOpen(true)} />}
-      {!destDecided && datesDecided && <ScenarioC trip={trip} onInvite={() => setInviteOpen(true)} />}
-      {destDecided && datesDecided && <ScenarioD trip={trip} onInvite={() => setInviteOpen(true)} />}
+      {!destDecided && !datesDecided && <ScenarioA trip={trip} onAvailability={() => setAvailabilityOpen(true)} />}
+      {destDecided && !datesDecided && <ScenarioB trip={trip} onAvailability={() => setAvailabilityOpen(true)} />}
+      {!destDecided && datesDecided && <ScenarioC trip={trip} />}
+      {destDecided && datesDecided && <ScenarioD trip={trip} />}
+
+      {/* Members list */}
+      <MembersSection trip={trip} currentUserId={user?.uid} onInvite={() => setInviteOpen(true)} />
 
       {/* Invite dialog */}
       <InviteDialog trip={trip} open={inviteOpen} onClose={() => setInviteOpen(false)} />
+
+      {/* Availability dialog */}
+      <AvailabilityDialog trip={trip} userId={user?.uid} open={availabilityOpen} onClose={() => setAvailabilityOpen(false)} />
     </div>
   )
 }

@@ -16,7 +16,6 @@ interface WizardData {
   destination: string
   dateStatus: Trip['dateStatus']
   dates: string
-  myAvailability: string
   tripType: Trip['tripType']
   estimatedSize: string
 }
@@ -27,7 +26,6 @@ const INITIAL: WizardData = {
   destination: '',
   dateStatus: 'flexible',
   dates: '',
-  myAvailability: '',
   tripType: 'group',
   estimatedSize: '',
 }
@@ -260,22 +258,6 @@ function StepWhen({
             </OptionCard>
           )}
 
-          {data.dateStatus === 'poll' && (
-            <div className="space-y-1.5 pt-1 px-1">
-              <Label htmlFor="my-availability">Your available dates (optional)</Label>
-              <Input
-                id="my-availability"
-                placeholder="e.g. June 1–15, July 10–20"
-                value={data.myAvailability}
-                onChange={(e) => onChange({ myAvailability: e.target.value })}
-                autoFocus
-              />
-              <p className="text-xs text-muted-foreground">
-                You'll invite your group after creating the trip — they can add their dates too.
-              </p>
-            </div>
-          )}
-
           <OptionCard
             selected={data.dateStatus === 'flexible'}
             onClick={() => onChange({ dateStatus: 'flexible', dates: '' })}
@@ -339,11 +321,6 @@ export default function NewTripPage() {
     if (!validate()) return
     setSubmitting(true)
     try {
-      const availability: Record<string, string> = {}
-      if (data.dateStatus === 'poll' && data.myAvailability.trim()) {
-        availability[user.uid] = data.myAvailability.trim()
-      }
-
       const tripId = await createTrip({
         name: data.name.trim(),
         destination: data.destinationStatus === 'decided' ? data.destination.trim() : null,
@@ -353,7 +330,6 @@ export default function NewTripPage() {
         tripType: data.tripType,
         estimatedSize: data.estimatedSize ? parseInt(data.estimatedSize, 10) : null,
         ownerId: user.uid,
-        availability,
       })
       navigate(`/trips/${tripId}`, { replace: true })
     } catch {

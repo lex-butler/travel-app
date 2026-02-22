@@ -25,8 +25,6 @@ export interface CreateTripInput {
   tripType: Trip['tripType']
   estimatedSize: number | null
   ownerId: string
-  // Initial availability note from the trip creator (when dateStatus === 'poll')
-  availability?: Record<string, string>
 }
 
 // ─── Create ───────────────────────────────────────────────────────────────────
@@ -46,7 +44,7 @@ export async function createTrip(input: CreateTripInput): Promise<string> {
     phase: 'planning',
     budget: null,
     currency: 'USD',
-    availability: input.availability ?? {},
+    availability: {},
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   })
@@ -55,15 +53,37 @@ export async function createTrip(input: CreateTripInput): Promise<string> {
 
 // ─── Update availability ──────────────────────────────────────────────────────
 
+export interface DateRange {
+  start: string  // ISO date string e.g. '2025-06-01'
+  end: string    // ISO date string e.g. '2025-06-15'
+}
+
 export async function updateMyAvailability(
   tripId: string,
   userId: string,
-  dates: string,
+  ranges: DateRange[],
 ): Promise<void> {
   await updateDoc(doc(db, 'trips', tripId), {
-    [`availability.${userId}`]: dates,
+    [`availability.${userId}`]: ranges,
     updatedAt: serverTimestamp(),
   })
+}
+
+// ─── User profiles ────────────────────────────────────────────────────────────
+
+export interface MemberProfile {
+  id: string
+  displayName: string
+  photoURL: string | null
+  email: string
+}
+
+export async function getUserProfiles(userIds: string[]): Promise<MemberProfile[]> {
+  if (userIds.length === 0) return []
+  const snaps = await Promise.all(userIds.map((id) => getDoc(doc(db, 'users', id))))
+  return snaps
+    .filter((s) => s.exists())
+    .map((s) => ({ id: s.id, ...(s.data() as Omit<MemberProfile, 'id'>) }))
 }
 
 // ─── Read ─────────────────────────────────────────────────────────────────────
