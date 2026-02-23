@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git rebase:*)",
+      "Bash(git config:*)",
+      "Bash(printf:*)",
+      "Bash(git credential-osxkeychain:*)",
+      "Bash(git push:*)",
+      "Bash(npx eslint:*)",
+      "Bash(test:*)"
+    ]
+  }
+}

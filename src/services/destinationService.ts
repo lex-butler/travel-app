@@ -2,6 +2,7 @@ import {
   collection,
   addDoc,
   updateDoc,
+  deleteDoc,
   doc,
   onSnapshot,
   serverTimestamp,
@@ -85,6 +86,15 @@ export async function updateComment(
   await updateDoc(doc(db, 'trips', tripId, 'destinations', destId), {
     [`comments.${userId}`]: text,
   })
+}
+
+// ─── Delete ───────────────────────────────────────────────────────────────────
+
+export async function deleteDestination(
+  tripId: string,
+  destId: string,
+): Promise<void> {
+  await deleteDoc(doc(db, 'trips', tripId, 'destinations', destId))
 }
 
 // ─── Lock ─────────────────────────────────────────────────────────────────────

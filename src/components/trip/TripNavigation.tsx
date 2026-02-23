@@ -1,9 +1,7 @@
 import { Link, useLocation, useParams } from 'react-router-dom'
-import { LayoutDashboard, MapPin, Users, Calendar, Settings } from 'lucide-react'
+import { LayoutDashboard, MapPin, Users, Calendar, DollarSign, Hotel } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { motion } from 'framer-motion'
-import { useTripStore } from '@/stores/tripStore'
-import { useAuthStore } from '@/stores/authStore'
 
 interface NavItem {
     label: string
@@ -14,22 +12,14 @@ interface NavItem {
 export default function TripNavigation() {
     const { tripId } = useParams<{ tripId: string }>()
     const location = useLocation()
-    const activeTrip = useTripStore((s) => s.activeTrip)
-    const user = useAuthStore((s) => s.user)
-
-    const isOwnerOrColead =
-        user &&
-        activeTrip &&
-        (activeTrip.ownerId === user.uid || activeTrip.coLeadIds.includes(user.uid))
 
     const items: NavItem[] = [
         { label: 'Overview', href: `/trips/${tripId}`, icon: LayoutDashboard },
         { label: 'Destinations', href: `/trips/${tripId}/destinations`, icon: MapPin },
+        { label: 'Stays', href: `/trips/${tripId}/accommodations`, icon: Hotel },
+        { label: 'Budget', href: `/trips/${tripId}/budget`, icon: DollarSign },
         { label: 'Crew', href: `/trips/${tripId}/crew`, icon: Users },
         { label: 'Planning', href: `/trips/${tripId}/planning`, icon: Calendar },
-        ...(isOwnerOrColead
-            ? [{ label: 'Settings', href: `/trips/${tripId}/settings`, icon: Settings }]
-            : []),
     ]
 
     return (

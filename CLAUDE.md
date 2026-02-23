@@ -20,6 +20,13 @@ Firebase (Auth, Firestore, Storage) + Zustand + shadcn/ui + Tailwind CSS v4.
 - Project ID: `travel-app-5cdd1`
 - Web App ID: `1:504141892142:web:37fdb2dd0a20db076aadbf`
 
+## Firebase Deployments
+Always deploy by name to avoid redeploying unchanged resources:
+- **Specific Cloud Function:** `firebase deploy --only functions:getUrlPreview`
+- **All Firestore rules:** `firebase deploy --only firestore:rules`
+- **Never** use `firebase deploy --only functions` — redeploys every function, slow and risky.
+- When adding a new Cloud Function, deploy it by its exported name.
+
 ## Key Conventions
 - Path aliases: `@/` → `src/`
 - State: Zustand stores in `src/stores/`

@@ -41,7 +41,7 @@ export default function TripCrewPage() {
                 setMembers(profiles)
             }
         })
-    }, [trip?.memberIds])
+    }, [trip])
 
     if (loading) {
         return (

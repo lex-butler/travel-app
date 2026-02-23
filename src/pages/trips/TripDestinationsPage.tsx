@@ -1,10 +1,10 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams } from 'react-router-dom'
-import { MapPin, Flame, CheckCircle2, Loader2, List, Home, Compass } from 'lucide-react'
+import { MapPin, Flame, CheckCircle2, Loader2, List, Home, Compass, Trash2, MessageCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
-import { subscribeToDestinations, addDestination, castVote, removeVote, lockDestination } from '@/services/destinationService'
+import { subscribeToDestinations, addDestination, castVote, removeVote, lockDestination, deleteDestination, updateComment } from '@/services/destinationService'
 import { subscribeToTrip, getUserProfiles, type MemberProfile } from '@/services/tripService'
 import { updateUserHomeCity } from '@/services/userService'
 import { useAuthStore } from '@/stores/authStore'
@@ -15,7 +15,7 @@ import 'leaflet/dist/leaflet.css'
 import { cn } from '@/lib/utils'
 
 // Fix for default marker icons in Leaflet with React
-// @ts-ignore
+// @ts-expect-error — _getIconUrl is an internal Leaflet method not in types
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
     iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
@@ -33,11 +33,69 @@ interface NominatimResult {
     lon: string
 }
 
-function ChangeView({ center }: { center: [number, number] }) {
+// ── Travel time estimation ──────────────────────────────────────────────────
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371
+    const dLat = (lat2 - lat1) * Math.PI / 180
+    const dLng = (lng2 - lng1) * Math.PI / 180
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+function fmtHours(h: number): string {
+    if (h < 1) return `${Math.round(h * 60)}m`
+    const hrs = Math.floor(h)
+    const mins = Math.round((h - hrs) * 60)
+    return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`
+}
+
+interface TravelEst { icon: string; duration: string }
+
+function getTravelTimes(homeLat: number, homeLng: number, destLat: number, destLng: number): TravelEst[] {
+    const km = haversineKm(homeLat, homeLng, destLat, destLng)
+    const out: TravelEst[] = []
+    if (km < 1800) out.push({ icon: '🚗', duration: fmtHours(km / 80) })
+    if (km > 50 && km < 1200) out.push({ icon: '🚂', duration: fmtHours(km / 160 + 0.5) })
+    if (km > 200) out.push({ icon: '✈️', duration: fmtHours(Math.max(km / 800 + 2, 2.5)) })
+    return out
+}
+
+// ── Map controller — pans to selected dest, fits all markers on load ────────
+
+function MapController({ destinations, profiles, selectedId }: {
+    destinations: Destination[]
+    profiles: MemberProfile[]
+    selectedId: string | null
+}) {
     const map = useMap()
+
+    // Force Leaflet to remeasure the container after flex layout settles.
+    // Without this, tiles only render for a portion of the container and
+    // fitBounds computes against the wrong viewport size.
     useEffect(() => {
-        map.setView(center, map.getZoom())
-    }, [center, map])
+        const t = setTimeout(() => map.invalidateSize(), 50)
+        return () => clearTimeout(t)
+    }, [map])
+
+    useEffect(() => {
+        if (!selectedId) return
+        const dest = destinations.find(d => d.id === selectedId)
+        if (dest?.lat && dest?.lng) {
+            map.setView([dest.lat, dest.lng], Math.max(map.getZoom(), 5), { animate: true })
+        }
+    }, [selectedId, destinations, map])
+
+    useEffect(() => {
+        const points: L.LatLng[] = []
+        destinations.forEach(d => { if (d.lat && d.lng) points.push(L.latLng(d.lat, d.lng)) })
+        profiles.forEach(p => { if (p.homeLat && p.homeLng) points.push(L.latLng(p.homeLat, p.homeLng)) })
+        if (points.length === 0) return
+        if (points.length === 1) { map.setView(points[0], 6); return }
+        map.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 8 })
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [destinations.length, profiles.length, map])
+
     return null
 }
 
@@ -103,7 +161,7 @@ function NominatimInput({
                 onBlur={() => setTimeout(() => setSuggestions([]), 150)}
                 placeholder={placeholder ?? 'Search a place…'}
                 disabled={disabled}
-                className="rounded-xl border-white/30 bg-white/50 dark:bg-slate-800/50 focus-visible:ring-primary/30 text-sm font-medium h-11 w-full"
+                className="rounded-xl border-border bg-background focus-visible:ring-primary/30 text-sm font-medium h-11 w-full"
             />
             {suggestions.length > 0 && (
                 <div className="absolute top-full mt-2 left-0 right-0 z-[2000] glass rounded-2xl border-white/40 shadow-2xl overflow-hidden animate-scale-in">
@@ -139,10 +197,12 @@ export default function TripDestinationsPage() {
     const [adding, setAdding] = useState(false)
     const [locking, setLocking] = useState<string | null>(null)
     const [view, setView] = useState<'split' | 'map' | 'list'>('split')
-    const [mapCenter, setMapCenter] = useState<[number, number]>([20, 0])
     const [homeCityInput, setHomeCityInput] = useState('')
     const [savingHome, setSavingHome] = useState(false)
     const [selectedId, setSelectedId] = useState<string | null>(null)
+    const [commentText, setCommentText] = useState('')
+    const [savingComment, setSavingComment] = useState<string | null>(null)
+    const [deleting, setDeleting] = useState<string | null>(null)
 
     const [mockDests, setMockDests] = useState<Destination[]>([])
 
@@ -152,10 +212,12 @@ export default function TripDestinationsPage() {
         const unsubDests = subscribeToDestinations(tripId, (data) => {
             if (data.length === 0) {
                 // Inject sample data for visualization
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const mockTs = { seconds: 0, nanoseconds: 0 } as any
                 const samples: Destination[] = [
-                    { id: 'd1', name: 'Tokyo, Japan', addedBy: 'mock1', votes: { 'mock1': 3, 'mock2': 2, 'mock3': 3 }, status: 'voting', createdAt: { seconds: 0, nanoseconds: 0 } as any, googlePlaceId: 'mock1', description: '', lat: 35.6762, lng: 139.6503, comments: {} },
-                    { id: 'd2', name: 'Lisbon, Portugal', addedBy: 'mock2', votes: { 'mock1': 2, 'mock2': 3, 'mock3': 1 }, status: 'voting', createdAt: { seconds: 0, nanoseconds: 0 } as any, googlePlaceId: 'mock2', description: '', lat: 38.7223, lng: -9.1393, comments: {} },
-                    { id: 'd3', name: 'Iceland', addedBy: 'mock3', votes: { 'mock1': 1, 'mock2': 1, 'mock3': 3 }, status: 'voting', createdAt: { seconds: 0, nanoseconds: 0 } as any, googlePlaceId: 'mock3', description: '', lat: 64.1265, lng: -21.8174, comments: {} },
+                    { id: 'd1', name: 'Tokyo, Japan', addedBy: 'mock1', votes: { 'mock1': 3, 'mock2': 2, 'mock3': 3 }, status: 'voting', createdAt: mockTs, googlePlaceId: 'mock1', description: '', lat: 35.6762, lng: 139.6503, comments: {} },
+                    { id: 'd2', name: 'Lisbon, Portugal', addedBy: 'mock2', votes: { 'mock1': 2, 'mock2': 3, 'mock3': 1 }, status: 'voting', createdAt: mockTs, googlePlaceId: 'mock2', description: '', lat: 38.7223, lng: -9.1393, comments: {} },
+                    { id: 'd3', name: 'Iceland', addedBy: 'mock3', votes: { 'mock1': 1, 'mock2': 1, 'mock3': 3 }, status: 'voting', createdAt: mockTs, googlePlaceId: 'mock3', description: '', lat: 64.1265, lng: -21.8174, comments: {} },
                 ]
                 setMockDests(samples)
             } else {
@@ -184,16 +246,8 @@ export default function TripDestinationsPage() {
                 setProfiles(profiles)
             }
         })
-    }, [trip?.memberIds])
+    }, [trip])
 
-    useEffect(() => {
-        if (destinations.length > 0) {
-            const valid = destinations.filter(d => d.lat && d.lng)
-            if (valid.length > 0) {
-                setMapCenter([valid[0].lat!, valid[0].lng!])
-            }
-        }
-    }, [destinations.length])
 
     if (!trip) return <div className="p-20 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></div>
 
@@ -244,6 +298,36 @@ export default function TripDestinationsPage() {
             await lockDestination(trip!.id, dest.id, dest.name)
         } finally {
             setLocking(null)
+        }
+    }
+
+    async function handleSaveComment(dest: Destination) {
+        if (!user || !commentText.trim()) return
+        setSavingComment(dest.id)
+        try {
+            await updateComment(trip!.id, dest.id, user.uid, commentText.trim())
+        } finally {
+            setSavingComment(null)
+        }
+    }
+
+    async function handleDelete(dest: Destination) {
+        setDeleting(dest.id)
+        try {
+            await deleteDestination(trip!.id, dest.id)
+            if (selectedId === dest.id) setSelectedId(null)
+        } finally {
+            setDeleting(null)
+        }
+    }
+
+    function handleSelect(destId: string) {
+        if (selectedId === destId) {
+            setSelectedId(null)
+        } else {
+            setSelectedId(destId)
+            const dest = displayDests.find(d => d.id === destId)
+            setCommentText(user ? (dest?.comments[user.uid] ?? '') : '')
         }
     }
 
@@ -311,7 +395,7 @@ export default function TripDestinationsPage() {
                                     return (
                                         <div
                                             key={dest.id}
-                                            onClick={() => setSelectedId(isSelected ? null : dest.id)}
+                                            onClick={() => handleSelect(dest.id)}
                                             className={cn(
                                                 "group p-4 rounded-2xl border transition-all animate-slide-up cursor-pointer relative overflow-hidden",
                                                 isFinalized
@@ -337,6 +421,15 @@ export default function TripDestinationsPage() {
                                                     <p className="text-[9px] font-black text-muted-foreground mt-0.5 uppercase tracking-widest">
                                                         Suggested by {getAddedBy(dest.addedBy)}
                                                     </p>
+                                                    {myProfile?.homeLat && myProfile?.homeLng && dest.lat && dest.lng && (
+                                                        <div className="flex items-center gap-1.5 mt-1.5">
+                                                            {getTravelTimes(myProfile.homeLat!, myProfile.homeLng!, dest.lat, dest.lng).map(t => (
+                                                                <span key={t.icon} className="flex items-center gap-0.5 text-[9px] font-bold text-muted-foreground bg-white/70 dark:bg-slate-800 px-2 py-0.5 rounded-full border border-white/40 dark:border-white/10">
+                                                                    {t.icon} {t.duration}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 {score > 0 && (
                                                     <div className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-lg bg-primary/10 text-primary border border-primary/20 text-[10px] font-black shadow-sm">
@@ -347,7 +440,23 @@ export default function TripDestinationsPage() {
                                             </div>
 
                                             {isSelected && (
-                                                <div className="space-y-4 pt-2 animate-scale-in origin-top">
+                                                <div className="space-y-3 pt-2 animate-scale-in origin-top">
+                                                    {/* Vote breakdown — who voted what */}
+                                                    {Object.keys(dest.votes).length > 0 && (
+                                                        <div className="flex flex-wrap gap-1.5">
+                                                            {Object.entries(dest.votes).map(([uid, v]) => {
+                                                                const p = profiles.find(pr => pr.id === uid)
+                                                                return (
+                                                                    <div key={uid} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/60 dark:bg-slate-800 border border-white/40 text-[10px] font-bold">
+                                                                        <span>{VOTE_LABELS[v]}</span>
+                                                                        <span className="text-muted-foreground">{p ? p.displayName.split(' ')[0] : 'Someone'}</span>
+                                                                    </div>
+                                                                )
+                                                            })}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Vote buttons */}
                                                     <div className="flex items-center gap-2">
                                                         {([1, 2, 3] as const).map(v => (
                                                             <button
@@ -367,16 +476,65 @@ export default function TripDestinationsPage() {
                                                         ))}
                                                     </div>
 
-                                                    {isHost && !isFinalized && (
-                                                        <Button
-                                                            onClick={(e) => { e.stopPropagation(); handleLock(dest) }}
-                                                            disabled={locking === dest.id}
-                                                            className="w-full bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-10 font-black text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-500/20"
-                                                        >
-                                                            {locking === dest.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                                                            <span className="ml-2">Finalize this choice</span>
-                                                        </Button>
-                                                    )}
+                                                    {/* Comments */}
+                                                    <div className="space-y-2 pt-1 border-t border-white/20" onClick={e => e.stopPropagation()}>
+                                                        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1">
+                                                            <MessageCircle className="h-3 w-3" /> Notes
+                                                        </p>
+                                                        {Object.entries(dest.comments).filter(([, text]) => text.trim()).map(([uid, text]) => {
+                                                            const p = profiles.find(pr => pr.id === uid)
+                                                            return (
+                                                                <div key={uid} className="text-[11px] leading-snug">
+                                                                    <span className="font-black">{p ? p.displayName.split(' ')[0] : 'Someone'}: </span>
+                                                                    <span className="text-muted-foreground">{text}</span>
+                                                                </div>
+                                                            )
+                                                        })}
+                                                        {user && !isFinalized && (
+                                                            <div className="flex gap-2">
+                                                                <input
+                                                                    value={commentText}
+                                                                    onChange={e => setCommentText(e.target.value)}
+                                                                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSaveComment(dest) } }}
+                                                                    placeholder="Add a note…"
+                                                                    className="flex-1 text-[11px] font-medium px-3 py-1.5 rounded-lg bg-background border border-border focus:outline-none focus:ring-1 focus:ring-primary/30 placeholder:text-muted-foreground/50"
+                                                                />
+                                                                <Button
+                                                                    size="sm"
+                                                                    onClick={() => handleSaveComment(dest)}
+                                                                    disabled={savingComment === dest.id || !commentText.trim()}
+                                                                    className="h-8 px-3 rounded-lg text-[10px] font-black uppercase tracking-widest shrink-0"
+                                                                >
+                                                                    {savingComment === dest.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
+                                                                </Button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Host actions + delete */}
+                                                    <div className="flex gap-2">
+                                                        {isHost && !isFinalized && (
+                                                            <Button
+                                                                onClick={(e) => { e.stopPropagation(); handleLock(dest) }}
+                                                                disabled={locking === dest.id}
+                                                                className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-10 font-black text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-500/20"
+                                                            >
+                                                                {locking === dest.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                                                                <span className="ml-2">Finalize</span>
+                                                            </Button>
+                                                        )}
+                                                        {(user && (dest.addedBy === user.uid || isHost) && !isFinalized) && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={(e) => { e.stopPropagation(); handleDelete(dest) }}
+                                                                disabled={deleting === dest.id}
+                                                                className="h-10 w-10 rounded-xl text-destructive hover:bg-destructive/10 hover:text-destructive shrink-0"
+                                                            >
+                                                                {deleting === dest.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                                            </Button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
@@ -395,7 +553,7 @@ export default function TripDestinationsPage() {
                 )}>
                     <Card className="flex-1 rounded-3xl border-white/40 dark:border-white/10 overflow-hidden shadow-2xl relative bg-slate-100 dark:bg-slate-900">
                         <MapContainer
-                            center={mapCenter}
+                            center={[20, 0]}
                             zoom={2}
                             style={{ height: '100%', width: '100%', zIndex: 0 }}
                         >
@@ -403,7 +561,11 @@ export default function TripDestinationsPage() {
                                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                             />
-                            <ChangeView center={mapCenter} />
+                            <MapController
+                                destinations={displayDests}
+                                profiles={profiles}
+                                selectedId={selectedId}
+                            />
 
                             {/* Home cities */}
                             {profiles.filter(p => p.homeLat && p.homeLng).map(p => (

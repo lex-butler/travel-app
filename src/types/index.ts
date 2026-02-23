@@ -43,6 +43,7 @@ export interface Trip {
   // userId → array of selected date ranges, used when dateStatus === 'poll'
   availability: Record<string, Array<{ start: string; end: string }>>
   archived?: boolean
+  completed?: boolean
   createdAt: Timestamp
   updatedAt: Timestamp
 }
@@ -124,16 +125,17 @@ export interface Accommodation {
   name: string
   type: AccommodationType
   address: string
-  checkIn: Timestamp
-  checkOut: Timestamp
+  checkIn: string          // ISO date string YYYY-MM-DD
+  checkOut: string         // ISO date string YYYY-MM-DD
   totalCost: number
   bookingUrl: string | null
   confirmationNumber: string | null
   imageUrl: string | null
   description: string | null
   previewFetched: boolean
+  addedBy: string          // userId who suggested this option
   votingRequired: boolean
-  votes: Record<string, boolean>
+  votes: Record<string, boolean>  // userId → true (👍 want this)
   status: VoteStatus
   approvalThreshold: number
   splitAmong: string[]
@@ -185,6 +187,18 @@ export interface Expense {
   paidStatus: Record<string, boolean>
   date: Timestamp
   notes: string
+  createdAt: Timestamp
+}
+
+// ─── Settlements ──────────────────────────────────────────────────────────────
+
+export interface Settlement {
+  id: string
+  from: string       // userId who pays
+  to: string         // userId who receives
+  amount: number
+  currency: string
+  note: string
   createdAt: Timestamp
 }
 

@@ -10,11 +10,15 @@ import {
   Info,
   Flame,
   Star,
-  Clock
+  Clock,
+  Plus,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { subscribeToTrip, getUserProfiles, type MemberProfile } from '@/services/tripService'
+import { Calendar as CalendarWidget } from '@/components/ui/calendar'
+import { subscribeToTrip, getUserProfiles, updateMyAvailability, type MemberProfile, type DateRange } from '@/services/tripService'
+import { useAuthStore } from '@/stores/authStore'
 import type { Trip } from '@/types'
 import { cn } from '@/lib/utils'
 import {
@@ -31,6 +35,14 @@ import {
   endOfMonth
 } from 'date-fns'
 
+type RdpRange = { from: Date | undefined; to?: Date | undefined }
+
+function formatRange(r: DateRange): string {
+  const s = new Date(r.start + 'T00:00:00')
+  const e = new Date(r.end + 'T00:00:00')
+  return isSameDay(s, e) ? format(s, 'MMM d') : `${format(s, 'MMM d')} – ${format(e, 'MMM d')}`
+}
+
 interface WinningWindow {
   start: Date
   end: Date
@@ -40,10 +52,13 @@ interface WinningWindow {
 
 export default function PlanningPage() {
   const { tripId } = useParams<{ tripId: string }>()
+  const user = useAuthStore((s) => s.user)
   const [trip, setTrip] = useState<Trip | null>(null)
   const [profiles, setProfiles] = useState<MemberProfile[]>([])
   const [loading, setLoading] = useState(true)
   const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()))
+  const [mySelection, setMySelection] = useState<RdpRange>({ from: undefined })
+  const [savingAvail, setSavingAvail] = useState(false)
 
   useEffect(() => {
     if (!tripId) return
@@ -54,7 +69,7 @@ export default function PlanningPage() {
     return unsub
   }, [tripId])
 
-  const [mockAvailability, setMockAvailability] = useState<Record<string, any>>({})
+  const [mockAvailability, setMockAvailability] = useState<Record<string, { start: string; end: string }[]>>({})
 
   useEffect(() => {
     if (!trip) return
@@ -92,7 +107,7 @@ export default function PlanningPage() {
         setMockAvailability({})
       }
     })
-  }, [trip?.memberIds])
+  }, [trip])
 
   // Heatmap Analysis
   const heatmap = useMemo(() => {
@@ -108,7 +123,7 @@ export default function PlanningPage() {
     return days.map(date => {
       const availableMembers = profiles.filter(p => {
         const ranges = finalAvail[p.id] || []
-        return ranges.some((r: any) => {
+        return ranges.some((r: { start: string; end: string }) => {
           const s = parseISO(r.start)
           const e = parseISO(r.end)
           return isWithinInterval(date, { start: s, end: e })
@@ -160,6 +175,30 @@ export default function PlanningPage() {
 
     return windows.sort((a, b) => b.score - a.score || b.start.getTime() - a.start.getTime()).slice(0, 5)
   }, [heatmap, profiles.length])
+
+  const myRanges: DateRange[] = user
+    ? (Array.isArray(trip?.availability?.[user.uid]) ? trip!.availability![user.uid] : [])
+    : []
+
+  async function addMyRange() {
+    if (!user || !tripId || !mySelection.from) return
+    const start = format(mySelection.from, 'yyyy-MM-dd')
+    const end = format(mySelection.to ?? mySelection.from, 'yyyy-MM-dd')
+    const updated = [...myRanges, { start, end }]
+    setSavingAvail(true)
+    try {
+      await updateMyAvailability(tripId, user.uid, updated)
+      setMySelection({ from: undefined })
+    } finally {
+      setSavingAvail(false)
+    }
+  }
+
+  async function removeMyRange(index: number) {
+    if (!user || !tripId) return
+    const updated = myRanges.filter((_, i) => i !== index)
+    await updateMyAvailability(tripId, user.uid, updated)
+  }
 
   if (loading || !trip) return <div className="p-20 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></div>
 
@@ -325,8 +364,65 @@ export default function PlanningPage() {
           </Card>
         </div>
 
-        {/* Right Column: Crew Status */}
+        {/* Right Column: My Availability + Crew Status */}
         <div className="lg:w-80 space-y-6">
+          {/* My Availability */}
+          <Card className="p-6 border-white/40 glass bg-white/20 dark:bg-slate-950/40 rounded-3xl space-y-5">
+            <h2 className="font-black text-sm uppercase tracking-widest flex items-center gap-2">
+              <CalendarIcon className="h-4 w-4 text-primary" />
+              My Availability
+            </h2>
+
+            <div className="flex justify-center border-none glass rounded-2xl p-3 bg-white/40 dark:bg-white/5 shadow-inner">
+              <CalendarWidget
+                mode="range"
+                selected={mySelection}
+                onSelect={(r) => setMySelection(r ?? { from: undefined })}
+                disabled={{ before: new Date() }}
+                numberOfMonths={1}
+                className="p-0 border-none scale-90 origin-top"
+              />
+            </div>
+
+            {mySelection.from ? (
+              <Button
+                onClick={addMyRange}
+                disabled={savingAvail}
+                size="sm"
+                className="w-full rounded-xl font-bold"
+              >
+                {savingAvail
+                  ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  : <Plus className="mr-2 h-4 w-4" />}
+                Add {format(mySelection.from, 'MMM d')}
+                {mySelection.to && !isSameDay(mySelection.from, mySelection.to)
+                  ? ` – ${format(mySelection.to, 'MMM d')}`
+                  : ''}
+              </Button>
+            ) : (
+              <p className="text-center text-[11px] font-medium text-muted-foreground bg-muted/20 py-3 rounded-xl border border-dashed border-muted-foreground/20">
+                Select dates to add your availability
+              </p>
+            )}
+
+            {myRanges.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Your windows</p>
+                {myRanges.map((r, i) => (
+                  <div key={i} className="flex items-center justify-between rounded-xl glass px-3 py-2 border-white/50 shadow-sm">
+                    <span className="text-xs font-bold">{formatRange(r)}</span>
+                    <button
+                      onClick={() => removeMyRange(i)}
+                      className="h-7 w-7 flex items-center justify-center rounded-lg bg-destructive/10 text-destructive hover:bg-destructive hover:text-white transition-all"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
           <Card className="p-6 border-white/40 glass bg-white/20 dark:bg-slate-950/40 rounded-3xl">
             <h2 className="font-black text-sm uppercase tracking-widest mb-6 flex items-center gap-2">
               <Users className="h-4 w-4 text-primary" />

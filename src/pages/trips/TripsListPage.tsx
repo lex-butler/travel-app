@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Plus, MapPin, Calendar, Plane, Bell, MoreHorizontal, Archive, ArchiveRestore } from 'lucide-react'
+import { Plus, MapPin, Calendar, Plane, Bell, MoreHorizontal, Archive, ArchiveRestore, CheckCircle2, RotateCcw, ArrowUpDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
@@ -16,6 +17,8 @@ import {
   createTrip,
   archiveTrip,
   unarchiveTrip,
+  completeTrip,
+  uncompleteTrip,
   type MemberProfile,
 } from '@/services/tripService'
 import { useAuthStore } from '@/stores/authStore'
@@ -34,10 +37,12 @@ function TripCard({
   trip,
   userId,
   onArchiveToggle,
+  onCompleteToggle,
 }: {
   trip: Trip
   userId?: string
   onArchiveToggle: () => void
+  onCompleteToggle: () => void
 }) {
   const navigate = useNavigate()
   const [members, setMembers] = useState<MemberProfile[]>([])
@@ -62,12 +67,12 @@ function TripCard({
       <Card
         className={cn(
           "hover:scale-[1.01] active:scale-[0.99] transition-all p-0 overflow-hidden border-white/40 group-hover:shadow-xl group-hover:shadow-primary/5 bg-white/60 dark:bg-black/20 cursor-pointer",
-          trip.archived && "opacity-60",
+          (trip.archived || trip.completed) && "opacity-60",
         )}
         onClick={() => navigate(`/trips/${trip.id}`)}
       >
         <div className="p-6 space-y-5">
-          {/* Header row: name + menu + badge — all inline, no overlap */}
+          {/* Header row */}
           <div className="flex items-start gap-3">
             <div className="flex-1 space-y-1 min-w-0">
               <h3 className="font-black text-xl tracking-tight group-hover:text-primary transition-colors leading-tight">{trip.name}</h3>
@@ -77,20 +82,30 @@ function TripCard({
             </div>
 
             <div className="flex items-center gap-2 shrink-0 pt-0.5">
-              {/* Archive context menu — owner only */}
               {isOwner && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      className="h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <MoreHorizontal className="h-3.5 w-3.5" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="glass rounded-xl border-white/20 p-1 shadow-xl" onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenuItem
+                      onClick={(e) => { e.stopPropagation(); onCompleteToggle() }}
+                      className="rounded-lg gap-2 text-sm cursor-pointer"
+                    >
+                      {trip.completed ? (
+                        <><RotateCcw className="h-4 w-4" /> Reopen</>
+                      ) : (
+                        <><CheckCircle2 className="h-4 w-4 text-emerald-500" /> Mark Complete</>
+                      )}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator className="my-1 bg-white/20" />
                     <DropdownMenuItem
                       onClick={(e) => { e.stopPropagation(); onArchiveToggle() }}
                       className="rounded-lg gap-2 text-sm cursor-pointer"
@@ -106,7 +121,12 @@ function TripCard({
               )}
 
               {/* Status badge */}
-              {needsAttention ? (
+              {trip.completed ? (
+                <span className="flex items-center gap-1 rounded-lg bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider">
+                  <CheckCircle2 className="h-3 w-3" />
+                  Completed
+                </span>
+              ) : needsAttention ? (
                 <span className="flex items-center gap-1 rounded-lg bg-destructive text-destructive-foreground px-2.5 py-1 text-[9px] font-black uppercase tracking-wider shadow-lg shadow-destructive/20 animate-pulse">
                   <Bell className="h-3 w-3" />
                   Action Required
@@ -193,7 +213,7 @@ function TripCard({
         </div>
       </Card>
 
-      {needsAttention && (
+      {needsAttention && !trip.completed && (
         <div className="absolute -left-1 top-1/2 -translate-y-1/2 h-12 w-1.5 bg-destructive rounded-full blur-[2px] opacity-70" />
       )}
     </div>
@@ -202,33 +222,28 @@ function TripCard({
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
-function EmptyState({ filtered }: { filtered?: boolean }) {
-  if (filtered) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-center animate-fade-in">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted text-muted-foreground mb-6">
-          <Archive className="h-8 w-8" />
-        </div>
-        <h2 className="text-xl font-black tracking-tight mb-2">No archived trips</h2>
-        <p className="text-sm text-muted-foreground">Archived trips will appear here.</p>
-      </div>
-    )
+function EmptyState({ filter }: { filter: FilterView }) {
+  const messages: Record<FilterView, { icon: React.ElementType; title: string; sub: string }> = {
+    active: { icon: Plane, title: 'Ready to explore?', sub: 'Create a trip to start planning with your crew.' },
+    completed: { icon: CheckCircle2, title: 'No completed trips yet', sub: "Mark a trip as complete after you've been there." },
+    archived: { icon: Archive, title: 'No archived trips', sub: 'Archived trips will appear here.' },
   }
+  const { icon: Icon, title, sub } = messages[filter]
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center animate-fade-in">
-      <div className="flex h-20 w-20 items-center justify-center rounded-3xl premium-gradient text-white shadow-xl shadow-primary/10 mb-8">
-        <Plane className="h-10 w-10" />
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted text-muted-foreground mb-6">
+        <Icon className="h-8 w-8" />
       </div>
-      <h2 className="text-2xl font-black tracking-tight mb-3">Ready to explore?</h2>
-      <p className="text-sm text-muted-foreground max-w-sm text-balance mb-8">
-        Create a trip to start planning with your crew.
-      </p>
-      <Button asChild className="rounded-xl px-8 shadow-lg shadow-primary/10">
-        <Link to="/trips/new">
-          <Plus className="mr-2 h-4 w-4" />
-          Create your first trip
-        </Link>
-      </Button>
+      <h2 className="text-xl font-black tracking-tight mb-2">{title}</h2>
+      <p className="text-sm text-muted-foreground">{sub}</p>
+      {filter === 'active' && (
+        <Button asChild className="mt-8 rounded-xl px-8 shadow-lg shadow-primary/10">
+          <Link to="/trips/new">
+            <Plus className="mr-2 h-4 w-4" />
+            Create your first trip
+          </Link>
+        </Button>
+      )}
     </div>
   )
 }
@@ -291,7 +306,8 @@ const demoTrips = [
   }
 ]
 
-type FilterView = 'active' | 'archived'
+type FilterView = 'active' | 'completed' | 'archived'
+type SortBy = 'newest' | 'name'
 
 export default function TripsListPage() {
   const user = useAuthStore((s) => s.user)
@@ -300,10 +316,25 @@ export default function TripsListPage() {
   const [error, setError] = useState('')
   const [demoLoading, setDemoLoading] = useState(false)
   const [filter, setFilter] = useState<FilterView>('active')
+  const [sortBy, setSortBy] = useState<SortBy>('newest')
 
-  const visibleTrips = trips.filter(t =>
-    filter === 'active' ? !t.archived : t.archived === true
-  )
+  const counts = {
+    active: trips.filter(t => !t.archived && !t.completed).length,
+    completed: trips.filter(t => t.completed === true).length,
+    archived: trips.filter(t => t.archived === true).length,
+  }
+
+  const filtered = trips.filter(t => {
+    if (filter === 'active') return !t.archived && !t.completed
+    if (filter === 'completed') return t.completed === true
+    return t.archived === true
+  })
+
+  const visibleTrips = [...filtered].sort((a, b) => {
+    if (sortBy === 'name') return a.name.localeCompare(b.name)
+    // newest: sort by createdAt descending
+    return (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0)
+  })
 
   async function handleAddDemo() {
     if (!user) return
@@ -313,7 +344,7 @@ export default function TripsListPage() {
       await createTrip({
         ...demo,
         ownerId: user.uid,
-        memberIds: [user.uid, ...(demo as any).memberIds],
+        memberIds: [user.uid, ...demo.memberIds],
       })
       const updated = await getUserTrips(user.uid)
       setTrips(updated)
@@ -333,6 +364,17 @@ export default function TripsListPage() {
     setTrips(updated)
   }
 
+  async function handleCompleteToggle(trip: Trip) {
+    if (!user) return
+    if (trip.completed) {
+      await uncompleteTrip(trip.id)
+    } else {
+      await completeTrip(trip.id)
+    }
+    const updated = await getUserTrips(user.uid)
+    setTrips(updated)
+  }
+
   useEffect(() => {
     if (!user) return
     let active = true
@@ -341,6 +383,12 @@ export default function TripsListPage() {
       .catch(() => { if (active) { setError('Failed to load trips. Please refresh.'); setLoading(false) } })
     return () => { active = false }
   }, [user, setTrips])
+
+  const filterLabels: Record<FilterView, string> = {
+    active: 'Active',
+    completed: 'Completed',
+    archived: 'Archived',
+  }
 
   return (
     <div className="space-y-10 animate-fade-in">
@@ -372,23 +420,58 @@ export default function TripsListPage() {
         </div>
       </div>
 
-      {/* Filter toggle */}
+      {/* Filter + Sort controls */}
       {!loading && trips.length > 0 && (
-        <div className="flex gap-1 p-1 glass rounded-xl w-fit border border-white/30">
-          {(['active', 'archived'] as FilterView[]).map((view) => (
-            <button
-              key={view}
-              onClick={() => setFilter(view)}
-              className={cn(
-                "px-5 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                filter === view
-                  ? "bg-primary text-white shadow-md shadow-primary/20"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {view}
-            </button>
-          ))}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          {/* Filter tabs */}
+          <div className="flex gap-1 p-1 glass rounded-xl border border-white/30">
+            {(['active', 'completed', 'archived'] as FilterView[]).map((view) => (
+              <button
+                key={view}
+                onClick={() => setFilter(view)}
+                className={cn(
+                  "flex items-center gap-1.5 px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
+                  filter === view
+                    ? "bg-primary text-white shadow-md shadow-primary/20"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {filterLabels[view]}
+                <span className={cn(
+                  "text-[8px] font-black px-1.5 py-0.5 rounded-full leading-none",
+                  filter === view ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                )}>
+                  {counts[view]}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* Sort */}
+          {visibleTrips.length > 1 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 rounded-xl border-white/30 gap-1.5 text-[10px] font-black uppercase tracking-widest">
+                  <ArrowUpDown className="h-3 w-3" />
+                  {sortBy === 'newest' ? 'Newest' : 'A – Z'}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="glass rounded-xl border-white/20 p-1 shadow-xl">
+                <DropdownMenuItem
+                  onClick={() => setSortBy('newest')}
+                  className={cn("rounded-lg text-sm cursor-pointer", sortBy === 'newest' && "text-primary font-bold")}
+                >
+                  Newest first
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setSortBy('name')}
+                  className={cn("rounded-lg text-sm cursor-pointer", sortBy === 'name' && "text-primary font-bold")}
+                >
+                  Name A – Z
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       )}
 
@@ -406,9 +489,9 @@ export default function TripsListPage() {
             <Button variant="outline" size="sm" className="mt-4" onClick={() => window.location.reload()}>Try Again</Button>
           </div>
         ) : trips.length === 0 ? (
-          <EmptyState />
+          <EmptyState filter="active" />
         ) : visibleTrips.length === 0 ? (
-          <EmptyState filtered />
+          <EmptyState filter={filter} />
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {visibleTrips.map((trip) => (
@@ -417,6 +500,7 @@ export default function TripsListPage() {
                 trip={trip}
                 userId={user?.uid}
                 onArchiveToggle={() => handleArchiveToggle(trip)}
+                onCompleteToggle={() => handleCompleteToggle(trip)}
               />
             ))}
           </div>

@@ -154,6 +154,20 @@ export async function unarchiveTrip(tripId: string): Promise<void> {
   })
 }
 
+export async function completeTrip(tripId: string): Promise<void> {
+  await updateDoc(doc(db, 'trips', tripId), {
+    completed: true,
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export async function uncompleteTrip(tripId: string): Promise<void> {
+  await updateDoc(doc(db, 'trips', tripId), {
+    completed: false,
+    updatedAt: serverTimestamp(),
+  })
+}
+
 // ─── Member management ───────────────────────────────────────────────────────
 
 export async function removeMember(tripId: string, userId: string): Promise<void> {

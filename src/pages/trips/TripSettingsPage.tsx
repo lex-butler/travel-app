@@ -27,8 +27,6 @@ const schema = z.object({
   destinationStatus: z.enum(['decided', 'tbd']),
   dates: z.string().optional(),
   dateStatus: z.enum(['decided', 'poll', 'flexible']),
-  tripType: z.enum(['solo', 'group']),
-  estimatedSize: z.string().optional(),
   phase: z.enum(['planning', 'booking', 'finalized']),
   budget: z.string().optional(),
   currency: z.string().min(1),
@@ -92,7 +90,6 @@ export default function TripSettingsPage() {
     resolver: zodResolver(schema),
   })
 
-  const watchedTripType = watch('tripType')
   const watchedDestStatus = watch('destinationStatus')
   const watchedDateStatus = watch('dateStatus')
 
@@ -109,8 +106,6 @@ export default function TripSettingsPage() {
           destinationStatus: data.destinationStatus,
           dates: data.dates ?? '',
           dateStatus: data.dateStatus,
-          tripType: data.tripType,
-          estimatedSize: data.estimatedSize != null ? String(data.estimatedSize) : '',
           phase: data.phase,
           budget: data.budget != null ? String(data.budget) : '',
           currency: data.currency,
@@ -152,8 +147,6 @@ export default function TripSettingsPage() {
         destinationStatus: data.destinationStatus,
         dates: data.dates || null,
         dateStatus: data.dateStatus,
-        tripType: data.tripType,
-        estimatedSize: data.estimatedSize ? parseInt(data.estimatedSize, 10) : null,
         phase: data.phase,
         budget: data.budget ? parseFloat(data.budget) : null,
         currency: data.currency,
@@ -205,31 +198,6 @@ export default function TripSettingsPage() {
             {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
           </div>
 
-          <div className="space-y-2">
-            <Label className="text-xs font-black uppercase tracking-widest">Trip Type</Label>
-            <ToggleGroup
-              value={watchedTripType}
-              onChange={(v) => setValue('tripType', v, { shouldDirty: true })}
-              options={[
-                { value: 'group', label: 'Group' },
-                { value: 'solo', label: 'Solo' },
-              ]}
-            />
-          </div>
-
-          {watchedTripType === 'group' && (
-            <div className="space-y-2">
-              <Label htmlFor="estimatedSize" className="text-xs font-black uppercase tracking-widest">Estimated Group Size</Label>
-              <Input
-                id="estimatedSize"
-                type="number"
-                min={2}
-                {...register('estimatedSize')}
-                className="rounded-xl border-white/30 w-32"
-                placeholder="e.g. 6"
-              />
-            </div>
-          )}
         </Card>
 
         {/* Destination */}

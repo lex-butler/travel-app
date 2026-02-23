@@ -1,5 +1,5 @@
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { Plane, LogOut, User, Map } from 'lucide-react'
+import { Plane, LogOut, User, Map, Settings } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   DropdownMenu,
@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useAuthStore } from '@/stores/authStore'
+import { useTripStore } from '@/stores/tripStore'
 import { signOut } from '@/services/auth'
 import TripNavigation from '@/components/trip/TripNavigation'
 import { useParams } from 'react-router-dom'
@@ -24,10 +25,14 @@ function getInitials(name: string | null) {
 
 export default function AppLayout() {
   const user = useAuthStore((s) => s.user)
+  const activeTrip = useTripStore((s) => s.activeTrip)
   const navigate = useNavigate()
   const location = useLocation()
   const { tripId } = useParams()
   const isOnTripsPage = location.pathname === '/trips'
+  const isOwnerOrColead =
+    user && activeTrip &&
+    (activeTrip.ownerId === user.uid || activeTrip.coLeadIds.includes(user.uid))
 
   async function handleSignOut() {
     await signOut()
@@ -80,6 +85,15 @@ export default function AppLayout() {
                       <Link to="/trips">
                         <Map className="h-4 w-4" />
                         <span>My Trips</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+
+                  {tripId && isOwnerOrColead && (
+                    <DropdownMenuItem asChild className="rounded-xl m-1 gap-2.5 p-2.5 text-sm cursor-pointer">
+                      <Link to={`/trips/${tripId}/settings`}>
+                        <Settings className="h-4 w-4" />
+                        <span>Trip Settings</span>
                       </Link>
                     </DropdownMenuItem>
                   )}

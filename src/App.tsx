@@ -17,6 +17,8 @@ const PlanningPage = lazy(() => import('@/pages/planning/PlanningPage'))
 const TripDestinationsPage = lazy(() => import('@/pages/trips/TripDestinationsPage'))
 const TripCrewPage = lazy(() => import('@/pages/trips/TripCrewPage'))
 const TripSettingsPage = lazy(() => import('@/pages/trips/TripSettingsPage'))
+const BudgetPage = lazy(() => import('@/pages/trips/BudgetPage'))
+const AccommodationsPage = lazy(() => import('@/pages/trips/AccommodationsPage'))
 const InvitePage = lazy(() => import('@/pages/invite/InvitePage'))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 
@@ -63,6 +65,8 @@ function App() {
                 <Route path="/trips/:tripId/destinations" element={<TripDestinationsPage />} />
                 <Route path="/trips/:tripId/crew" element={<TripCrewPage />} />
                 <Route path="/trips/:tripId/planning" element={<PlanningPage />} />
+                <Route path="/trips/:tripId/budget" element={<BudgetPage />} />
+                <Route path="/trips/:tripId/accommodations" element={<AccommodationsPage />} />
                 <Route path="/trips/:tripId/settings" element={<TripSettingsPage />} />
               </Route>
             </Route>

@@ -536,7 +536,7 @@ function SectionHeader({ title, subtitle }: { title: string; subtitle: string })
   )
 }
 
-function ScenarioA({ trip, onAvailability, onDestinations, onPlanning, isHost, userId }: { trip: Trip; onAvailability: () => void; onDestinations: () => void; onPlanning: () => void; isHost: boolean; userId?: string }) {
+function ScenarioA({ trip, onAvailability, onDestinations, onPlanning, onBudget, isHost, userId }: { trip: Trip; onAvailability: () => void; onDestinations: () => void; onPlanning: () => void; onBudget: () => void; isHost: boolean; userId?: string }) {
   const isPoll = trip.dateStatus === 'poll'
   const hasResponded = userId ? !!trip.availability?.[userId] : false
 
@@ -574,13 +574,14 @@ function ScenarioA({ trip, onAvailability, onDestinations, onPlanning, isHost, u
           description="See estimated costs"
           color="emerald"
           className="sm:col-span-2 lg:col-span-1"
+          onClick={onBudget}
         />
       </div>
     </>
   )
 }
 
-function ScenarioB({ trip, onAvailability, onPlanning, isHost }: { trip: Trip; onAvailability: () => void; onPlanning: () => void; isHost: boolean }) {
+function ScenarioB({ trip, onAvailability, onPlanning, onBudget, isHost }: { trip: Trip; onAvailability: () => void; onPlanning: () => void; onBudget: () => void; isHost: boolean }) {
   const isPoll = trip.dateStatus === 'poll'
   return (
     <>
@@ -593,13 +594,13 @@ function ScenarioB({ trip, onAvailability, onPlanning, isHost }: { trip: Trip; o
           ? <ActionCard icon={Calendar} title="Availability" description={isHost ? "Crew Overlaps & Heatmap" : "Add your window"} color="blue" highlight onClick={isHost ? onPlanning : onAvailability} />
           : isHost && <ActionCard icon={Calendar} title="Trip Dates" description="Finalize the dates" color="blue" highlight onClick={onPlanning} />}
         <ActionCard icon={Compass} title="Bucket List" description="Start adding sights and bites" color="amber" />
-        <ActionCard icon={DollarSign} title="Budget Plan" description="Track expected expenses" color="emerald" className={cn(isPoll || isHost ? "" : "sm:col-span-2 lg:col-span-1")} />
+        <ActionCard icon={DollarSign} title="Budget Plan" description="Track expected expenses" color="emerald" className={cn(isPoll || isHost ? "" : "sm:col-span-2 lg:col-span-1")} onClick={onBudget} />
       </div>
     </>
   )
 }
 
-function ScenarioC({ trip, onDestinations }: { trip: Trip; onDestinations: () => void }) {
+function ScenarioC({ trip, onDestinations, onBudget }: { trip: Trip; onDestinations: () => void; onBudget: () => void }) {
   return (
     <>
       <SectionHeader
@@ -608,14 +609,14 @@ function ScenarioC({ trip, onDestinations }: { trip: Trip; onDestinations: () =>
       />
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <ActionCard icon={MapPin} title="Destination" description="Vet and vote on locations" color="violet" highlight onClick={onDestinations} />
-        <ActionCard icon={DollarSign} title="Budgeting" description="How much will we spend?" color="emerald" />
-        <ActionCard icon={Map} title="Itinerary" description="Draft a daily schedule" color="cyan" className="sm:col-span-2 lg:col-span-1" />
+        <ActionCard icon={DollarSign} title="Budgeting" description="How much will we spend?" color="emerald" onClick={onBudget} />
+        <ActionCard icon={Map} title="Itinerary" description="Draft a daily schedule" color="cyan" className="sm:col-span-2 lg:col-span-1" comingSoon />
       </div>
     </>
   )
 }
 
-function ScenarioD({ trip }: { trip: Trip }) {
+function ScenarioD({ trip, onBudget, onAccommodations }: { trip: Trip; onBudget: () => void; onAccommodations: () => void }) {
   return (
     <>
       <SectionHeader
@@ -624,9 +625,9 @@ function ScenarioD({ trip }: { trip: Trip }) {
       />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <ActionCard icon={Map} title="Daily Schedule" description="Activities and bookings" color="cyan" comingSoon />
-        <ActionCard icon={Hotel} title="Stay" description="Lodging options and votes" color="rose" comingSoon />
+        <ActionCard icon={Hotel} title="Stay" description="Lodging options and votes" color="rose" onClick={onAccommodations} />
         <ActionCard icon={Plane} title="Travel" description="Flights and transit info" color="blue" comingSoon />
-        <ActionCard icon={DollarSign} title="Final Budget" description="Track and split costs" color="emerald" comingSoon />
+        <ActionCard icon={DollarSign} title="Final Budget" description="Track and split costs" color="emerald" onClick={onBudget} />
       </div>
     </>
   )
@@ -663,7 +664,7 @@ export default function TripDetailPage() {
       }
     })
     return () => { cancelled = true }
-  }, [trip?.memberIds])
+  }, [trip])
 
   useEffect(() => {
     if (!tripId) return
@@ -742,6 +743,17 @@ export default function TripDetailPage() {
             </h1>
 
             <div className="flex flex-wrap gap-2.5">
+              {/* Group / Solo badge */}
+              <div className={cn(
+                "inline-flex items-center gap-2 rounded-xl backdrop-blur-md px-4 py-2 text-xs font-bold border shadow-sm",
+                trip.imageUrl
+                  ? "bg-black/20 text-white border-white/20"
+                  : "bg-white/50 dark:bg-white/5 border-white/50 text-foreground",
+              )}>
+                <Users className="h-3.5 w-3.5 text-primary" />
+                {trip.tripType === 'group' ? 'Group Trip' : 'Solo Trip'}
+              </div>
+
               <div className={cn(
                 "inline-flex items-center gap-2 rounded-xl backdrop-blur-md px-4 py-2 text-xs font-bold border shadow-sm transition-all",
                 trip.imageUrl
@@ -819,10 +831,10 @@ export default function TripDetailPage() {
         <div className="relative animate-slide-up" style={{ animationDelay: '0.2s' }}>
           <TripProgress trip={trip} />
           <div className="mt-6">
-            {!destDecided && !datesDecided && <ScenarioA trip={trip} onAvailability={() => setAvailabilityOpen(true)} onDestinations={() => navigate(`/trips/${tripId}/destinations`)} onPlanning={() => navigate(`/trips/${tripId}/planning`)} isHost={isHost} userId={user?.uid} />}
-            {destDecided && !datesDecided && <ScenarioB trip={trip} onAvailability={() => setAvailabilityOpen(true)} onPlanning={() => navigate(`/trips/${tripId}/planning`)} isHost={isHost} />}
-            {!destDecided && datesDecided && <ScenarioC trip={trip} onDestinations={() => navigate(`/trips/${tripId}/destinations`)} />}
-            {destDecided && datesDecided && <ScenarioD trip={trip} />}
+            {!destDecided && !datesDecided && <ScenarioA trip={trip} onAvailability={() => setAvailabilityOpen(true)} onDestinations={() => navigate(`/trips/${tripId}/destinations`)} onPlanning={() => navigate(`/trips/${tripId}/planning`)} onBudget={() => navigate(`/trips/${tripId}/budget`)} isHost={isHost} userId={user?.uid} />}
+            {destDecided && !datesDecided && <ScenarioB trip={trip} onAvailability={() => setAvailabilityOpen(true)} onPlanning={() => navigate(`/trips/${tripId}/planning`)} onBudget={() => navigate(`/trips/${tripId}/budget`)} isHost={isHost} />}
+            {!destDecided && datesDecided && <ScenarioC trip={trip} onDestinations={() => navigate(`/trips/${tripId}/destinations`)} onBudget={() => navigate(`/trips/${tripId}/budget`)} />}
+            {destDecided && datesDecided && <ScenarioD trip={trip} onBudget={() => navigate(`/trips/${tripId}/budget`)} onAccommodations={() => navigate(`/trips/${tripId}/accommodations`)} />}
           </div>
         </div>
 
