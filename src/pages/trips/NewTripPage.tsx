@@ -1,34 +1,55 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { X, MapPin, Calendar, Users, Loader2, CheckCircle2, Circle } from 'lucide-react'
+import { X, MapPin, Calendar, Users, Loader2, CheckCircle2, Circle, DollarSign } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
-import { createTrip } from '@/services/tripService'
+import { createTrip, updateTrip } from '@/services/tripService'
+import { fetchTripBackground } from '@/services/backgroundService'
 import { useAuthStore } from '@/stores/authStore'
 import type { Trip } from '@/types'
+import DestinationAutocomplete, { type PlaceSelection } from '@/components/ui/DestinationAutocomplete'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+const CURRENCIES = ['USD', 'EUR', 'GBP', 'AUD', 'CAD', 'JPY', 'NZD', 'CHF'] as const
+type CurrencyCode = typeof CURRENCIES[number]
 
 interface WizardData {
   name: string
   destinationStatus: Trip['destinationStatus']
   destination: string
+  destinationPlaceId: string | null
+  destinationLat: number | null
+  destinationLng: number | null
+  destinationFormattedAddress: string | null
+  destinationPhotoUrl: string | null
   dateStatus: Trip['dateStatus']
   dates: string
   tripType: Trip['tripType']
   estimatedSize: string
+  budgetAmount: string
+  budgetMode: 'per_person' | 'total'
+  currency: CurrencyCode
 }
 
 const INITIAL: WizardData = {
   name: '',
   destinationStatus: 'tbd',
   destination: '',
+  destinationPlaceId: null,
+  destinationLat: null,
+  destinationLng: null,
+  destinationFormattedAddress: null,
+  destinationPhotoUrl: null,
   dateStatus: 'flexible',
   dates: '',
   tripType: 'group',
   estimatedSize: '',
+  budgetAmount: '',
+  budgetMode: 'per_person',
+  currency: 'USD',
 }
 
 // ─── Step indicator ───────────────────────────────────────────────────────────
@@ -165,6 +186,29 @@ function StepWhere({
   onChange: (patch: Partial<WizardData>) => void
   error: string
 }) {
+  function handlePlaceSelect(place: PlaceSelection) {
+    onChange({
+      destination: place.displayName,
+      destinationPlaceId: place.placeId,
+      destinationLat: place.lat,
+      destinationLng: place.lng,
+      destinationFormattedAddress: place.formattedAddress,
+      destinationPhotoUrl: place.photoUrl,
+    })
+  }
+
+  function handleDestinationTextChange(value: string) {
+    // If user types manually (no autocomplete selection), clear structured data
+    onChange({
+      destination: value,
+      destinationPlaceId: null,
+      destinationLat: null,
+      destinationLng: null,
+      destinationFormattedAddress: null,
+      destinationPhotoUrl: null,
+    })
+  }
+
   return (
     <div className="space-y-6 animate-slide-up">
       <div className="space-y-1">
@@ -198,20 +242,33 @@ function StepWhere({
           </OptionCard>
 
           {data.destinationStatus === 'decided' && (
-            <div className="animate-scale-in">
-              <Input
-                placeholder="e.g. Barcelona, Spain"
+            <div className="animate-scale-in space-y-1.5">
+              <DestinationAutocomplete
                 value={data.destination}
-                onChange={(e) => onChange({ destination: e.target.value })}
-                autoFocus
-                className="h-11 rounded-xl glass bg-white/40 dark:bg-white/5 border-primary/20 focus:ring-primary/20 font-bold text-base"
+                onChange={handleDestinationTextChange}
+                onSelect={handlePlaceSelect}
+                className="h-11 rounded-xl"
               />
+              {data.destinationPlaceId && (
+                <p className="text-[10px] text-primary font-semibold ml-1 flex items-center gap-1">
+                  <MapPin className="h-3 w-3" />
+                  {data.destinationFormattedAddress}
+                </p>
+              )}
             </div>
           )}
 
           <OptionCard
             selected={data.destinationStatus === 'tbd'}
-            onClick={() => onChange({ destinationStatus: 'tbd', destination: '' })}
+            onClick={() => onChange({
+              destinationStatus: 'tbd',
+              destination: '',
+              destinationPlaceId: null,
+              destinationLat: null,
+              destinationLng: null,
+              destinationFormattedAddress: null,
+              destinationPhotoUrl: null,
+            })}
           >
             <div>
               <p className="font-bold text-base">Not sure yet</p>
@@ -310,10 +367,110 @@ function StepWhen({
   )
 }
 
+// ─── Step 3: Budget (optional) ────────────────────────────────────────────────
+
+function StepBudget({
+  data,
+  onChange,
+}: {
+  data: WizardData
+  onChange: (patch: Partial<WizardData>) => void
+}) {
+  const isSolo = data.tripType === 'solo'
+  const groupSize = parseInt(data.estimatedSize, 10) || (isSolo ? 1 : 2)
+  const amount = parseFloat(data.budgetAmount) || 0
+
+  const totalBudget = data.budgetMode === 'per_person' ? amount * groupSize : amount
+  const perPerson = data.budgetMode === 'total' ? (groupSize > 0 ? amount / groupSize : 0) : amount
+
+  function formatMoney(n: number) {
+    return n > 0 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: data.currency, maximumFractionDigits: 0 }).format(n) : null
+  }
+
+  const showCalc = amount > 0 && !isSolo && groupSize > 1
+
+  return (
+    <div className="space-y-6 animate-slide-up">
+      <div className="space-y-1">
+        <h2 className="text-2xl font-black tracking-tight">What's the budget?</h2>
+        <p className="text-sm text-muted-foreground font-medium">Optional — helps with expense tracking. You can always add this later.</p>
+      </div>
+
+      {/* Per person / Total toggle — hidden for solo */}
+      {!isSolo && (
+        <div className="flex rounded-xl bg-white/30 dark:bg-white/10 p-1 gap-1">
+          {(['per_person', 'total'] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => onChange({ budgetMode: mode })}
+              className={cn(
+                'flex-1 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all',
+                data.budgetMode === mode
+                  ? 'bg-white dark:bg-slate-700 text-primary shadow-sm'
+                  : 'text-muted-foreground'
+              )}
+            >
+              {mode === 'per_person' ? 'Per Person' : 'Total'}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Amount + Currency */}
+      <div className="flex gap-3">
+        <div className="flex-1 space-y-1.5">
+          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">
+            {isSolo ? 'Budget' : data.budgetMode === 'per_person' ? 'Amount per person' : 'Total budget'}
+          </Label>
+          <div className="relative">
+            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              type="number"
+              min="0"
+              step="100"
+              placeholder="0"
+              value={data.budgetAmount}
+              onChange={(e) => onChange({ budgetAmount: e.target.value })}
+              autoFocus
+              className="h-11 rounded-xl glass border-white/40 focus:ring-primary/20 pl-9 font-bold text-base"
+            />
+          </div>
+        </div>
+        <div className="w-28 space-y-1.5">
+          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Currency</Label>
+          <select
+            value={data.currency}
+            onChange={(e) => onChange({ currency: e.target.value as CurrencyCode })}
+            className="h-11 w-full rounded-xl glass border border-white/40 bg-white/40 dark:bg-white/5 px-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20"
+          >
+            {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Live conversion hint */}
+      {showCalc && (
+        <div className="rounded-xl bg-primary/5 border border-primary/10 px-4 py-3 animate-fade-in">
+          {data.budgetMode === 'per_person' ? (
+            <p className="text-[12px] font-bold text-primary">
+              {formatMoney(perPerson)} × {groupSize} people = <span className="font-black">{formatMoney(totalBudget)} total</span>
+            </p>
+          ) : (
+            <p className="text-[12px] font-bold text-primary">
+              {formatMoney(totalBudget)} ÷ {groupSize} people = <span className="font-black">{formatMoney(perPerson)} per person</span>
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-const STEP_ICONS = [Users, MapPin, Calendar]
-const TOTAL_STEPS = 3
+const STEP_ICONS = [Users, MapPin, Calendar, DollarSign]
+const TOTAL_STEPS = 4
 
 export default function NewTripPage() {
   const navigate = useNavigate()
@@ -345,6 +502,7 @@ export default function NewTripPage() {
         return false
       }
     }
+    // Step 3 (budget) is fully optional — no validation required
     return true
   }
 
@@ -358,6 +516,13 @@ export default function NewTripPage() {
     if (!validate()) return
     setSubmitting(true)
     try {
+      // Compute total budget from wizard input
+      const budgetRaw = parseFloat(data.budgetAmount) || 0
+      const groupSize = parseInt(data.estimatedSize, 10) || (data.tripType === 'solo' ? 1 : 1)
+      const totalBudget = budgetRaw > 0
+        ? (data.budgetMode === 'per_person' ? budgetRaw * Math.max(groupSize, 1) : budgetRaw)
+        : null
+
       const tripId = await createTrip({
         name: data.name.trim(),
         destination: data.destinationStatus === 'decided' ? data.destination.trim() : null,
@@ -367,8 +532,25 @@ export default function NewTripPage() {
         tripType: data.tripType,
         estimatedSize: data.estimatedSize ? parseInt(data.estimatedSize, 10) : null,
         ownerId: user.uid,
+        destinationPlaceId: data.destinationPlaceId,
+        destinationLat: data.destinationLat,
+        destinationLng: data.destinationLng,
+        destinationFormattedAddress: data.destinationFormattedAddress,
+        budget: totalBudget,
+        currency: data.currency,
       })
+
+      // Navigate immediately — don't block on background photo fetch
       navigate(`/trips/${tripId}`, { replace: true })
+
+      // Fire-and-forget background photo waterfall
+      if (data.destinationStatus === 'decided' && data.destination.trim()) {
+        fetchTripBackground(data.destinationPhotoUrl, data.destination.trim())
+          .then(({ url, attribution }) =>
+            updateTrip(tripId, { imageUrl: url, imageAttribution: attribution })
+          )
+          .catch((err) => console.error('[Background] waterfall error:', err))
+      }
     } catch {
       setError('Failed to create trip. Please try again.')
       setSubmitting(false)
@@ -376,6 +558,7 @@ export default function NewTripPage() {
   }
 
   const StepIcon = STEP_ICONS[step]
+  const isBudgetStep = step === TOTAL_STEPS - 1
 
   return (
     <div className="relative min-h-[90vh] flex flex-col overflow-hidden animate-fade-in">
@@ -414,6 +597,7 @@ export default function NewTripPage() {
           {step === 0 && <StepWho data={data} onChange={onChange} />}
           {step === 1 && <StepWhere data={data} onChange={onChange} error={error} />}
           {step === 2 && <StepWhen data={data} onChange={onChange} error={error} />}
+          {step === 3 && <StepBudget data={data} onChange={onChange} />}
         </div>
       </main>
 
@@ -434,30 +618,44 @@ export default function NewTripPage() {
             <div />
           )}
 
-          {step < TOTAL_STEPS - 1 ? (
-            <Button
-              onClick={handleNext}
-              className="rounded-xl h-10 px-8 font-black shadow-lg shadow-primary/10 group"
-            >
-              Continue
-              <Circle className="ml-2 h-1.5 w-1.5 fill-current opacity-40 transition-transform group-hover:scale-125" />
-            </Button>
-          ) : (
-            <Button
-              onClick={handleCreate}
-              disabled={submitting}
-              className="rounded-xl h-10 px-8 font-black shadow-lg shadow-primary/10"
-            >
-              {submitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating…
-                </>
-              ) : (
-                'Launch Trip'
-              )}
-            </Button>
-          )}
+          <div className="flex items-center gap-3">
+            {/* Skip budget step */}
+            {isBudgetStep && (
+              <button
+                type="button"
+                onClick={handleCreate}
+                disabled={submitting}
+                className="text-[11px] font-bold text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Skip for now
+              </button>
+            )}
+
+            {step < TOTAL_STEPS - 1 ? (
+              <Button
+                onClick={handleNext}
+                className="rounded-xl h-10 px-8 font-black shadow-lg shadow-primary/10 group"
+              >
+                Continue
+                <Circle className="ml-2 h-1.5 w-1.5 fill-current opacity-40 transition-transform group-hover:scale-125" />
+              </Button>
+            ) : (
+              <Button
+                onClick={handleCreate}
+                disabled={submitting}
+                className="rounded-xl h-10 px-8 font-black shadow-lg shadow-primary/10"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating…
+                  </>
+                ) : (
+                  'Launch Trip'
+                )}
+              </Button>
+            )}
+          </div>
         </div>
       </footer>
     </div>

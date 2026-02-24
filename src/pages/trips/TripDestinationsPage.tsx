@@ -337,11 +337,11 @@ export default function TripDestinationsPage() {
     }
 
     return (
-        <div className="flex flex-col h-[calc(100vh-140px)] min-h-[600px] pb-6">
+        <div className="flex flex-col pb-6">
 
-            <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0 overflow-hidden">
+            <div className="flex flex-col lg:flex-row gap-6">
                 {/* Left Side: Destination List & Entry */}
-                <div className="flex-1 flex flex-col min-h-0 order-2 lg:order-1">
+                <div className="flex-1 order-2 lg:order-1">
                     <div className="flex items-center justify-between mb-4 px-1">
                         <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
                             <MapPin className="h-6 w-6 text-primary" />
@@ -353,9 +353,9 @@ export default function TripDestinationsPage() {
                         </div>
                     </div>
 
-                    <Card className="flex-1 flex flex-col border-white/40 dark:border-white/10 glass rounded-3xl overflow-hidden shadow-xl shadow-primary/5 bg-white/40">
+                    <Card className="border-white/40 dark:border-white/10 glass rounded-3xl shadow-xl shadow-primary/5 bg-white/40">
                         {/* Suggest input */}
-                        <div className="p-5 border-b border-white/20 bg-primary/5 space-y-3">
+                        <div className="p-5 border-b border-white/20 bg-primary/5 space-y-3 rounded-t-3xl">
                             <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Suggest a destination</p>
                             <div className="space-y-3">
                                 <NominatimInput
@@ -375,10 +375,10 @@ export default function TripDestinationsPage() {
                             </div>
                         </div>
 
-                        {/* Scrollable List */}
-                        <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
+                        {/* Destination List */}
+                        <div className="p-4 space-y-4">
                             {sorted.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center h-full text-center py-20 opacity-40">
+                                <div className="flex flex-col items-center justify-center text-center py-20 opacity-40">
                                     <div className="h-16 w-16 rounded-3xl premium-gradient text-white flex items-center justify-center mb-4">
                                         <Compass className="h-8 w-8" />
                                     </div>
@@ -424,7 +424,7 @@ export default function TripDestinationsPage() {
                                                     {myProfile?.homeLat && myProfile?.homeLng && dest.lat && dest.lng && (
                                                         <div className="flex items-center gap-1.5 mt-1.5">
                                                             {getTravelTimes(myProfile.homeLat!, myProfile.homeLng!, dest.lat, dest.lng).map(t => (
-                                                                <span key={t.icon} className="flex items-center gap-0.5 text-[9px] font-bold text-muted-foreground bg-white/70 dark:bg-slate-800 px-2 py-0.5 rounded-full border border-white/40 dark:border-white/10">
+                                                                <span key={t.icon} className="flex items-center gap-0.5 text-[9px] font-bold text-muted-foreground bg-white/70 dark:bg-white/5 px-2 py-0.5 rounded-full border border-white/40 dark:border-white/10">
                                                                     {t.icon} {t.duration}
                                                                 </span>
                                                             ))}
@@ -447,7 +447,7 @@ export default function TripDestinationsPage() {
                                                             {Object.entries(dest.votes).map(([uid, v]) => {
                                                                 const p = profiles.find(pr => pr.id === uid)
                                                                 return (
-                                                                    <div key={uid} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/60 dark:bg-slate-800 border border-white/40 text-[10px] font-bold">
+                                                                    <div key={uid} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/60 dark:bg-white/10 border border-white/40 text-[10px] font-bold">
                                                                         <span>{VOTE_LABELS[v]}</span>
                                                                         <span className="text-muted-foreground">{p ? p.displayName.split(' ')[0] : 'Someone'}</span>
                                                                     </div>
@@ -467,7 +467,7 @@ export default function TripDestinationsPage() {
                                                                     "flex-1 py-1.5 rounded-xl text-sm border-2 transition-all active:scale-90",
                                                                     myVote === v
                                                                         ? "bg-primary border-primary text-white shadow-md font-bold"
-                                                                        : "bg-white/40 dark:bg-slate-800 border-white/40 hover:border-primary/30"
+                                                                        : "bg-white/40 dark:bg-white/5 border-white/40 hover:border-primary/30"
                                                                 )}
                                                                 title={VOTE_TITLES[v]}
                                                             >
@@ -547,11 +547,11 @@ export default function TripDestinationsPage() {
 
                 {/* Right Side: Map View */}
                 <div className={cn(
-                    "lg:w-[50%] flex flex-col order-1 lg:order-2",
-                    view === 'list' && "hidden lg:flex",
-                    view === 'map' && "flex h-[400px] lg:h-auto"
+                    "lg:w-[50%] order-1 lg:order-2",
+                    view === 'list' && "hidden lg:block",
+                    view === 'map' && "block"
                 )}>
-                    <Card className="flex-1 rounded-3xl border-white/40 dark:border-white/10 overflow-hidden shadow-2xl relative bg-slate-100 dark:bg-slate-900">
+                    <Card className="h-[400px] lg:h-[600px] rounded-3xl border-white/40 dark:border-white/10 overflow-hidden shadow-2xl relative bg-slate-100 dark:bg-slate-900">
                         <MapContainer
                             center={[20, 0]}
                             zoom={2}

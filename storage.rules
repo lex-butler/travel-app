@@ -1,0 +1,13 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Trip background images — any authenticated user with a valid session can upload
+    // (trip membership is enforced at the Firestore layer, not here)
+    match /trips/{tripId}/background {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.resource.size < 6 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+  }
+}

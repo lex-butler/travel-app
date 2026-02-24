@@ -93,6 +93,28 @@ interface AddAccomDialogProps {
   userId: string
 }
 
+// Parse check-in/check-out dates from a URL's query params.
+// Supports Airbnb (check_in/check_out), Booking.com (checkin/checkout), VRBO (arrival/departure).
+function parseDatesFromUrl(url: string): { checkIn: string; checkOut: string } | null {
+  try {
+    const params = new URL(url).searchParams
+    const checkIn =
+      params.get('check_in') ||    // Airbnb
+      params.get('checkin') ||     // Booking.com
+      params.get('arrival')        // VRBO
+    const checkOut =
+      params.get('check_out') ||   // Airbnb
+      params.get('checkout') ||    // Booking.com
+      params.get('departure')      // VRBO
+    if (checkIn && checkOut && /^\d{4}-\d{2}-\d{2}$/.test(checkIn) && /^\d{4}-\d{2}-\d{2}$/.test(checkOut)) {
+      return { checkIn, checkOut }
+    }
+  } catch {
+    // invalid URL — skip silently
+  }
+  return null
+}
+
 function AddAccomDialog({ open, onClose, trip, profiles, userId }: AddAccomDialogProps) {
   const [urlInput, setUrlInput] = useState('')
   const [preview, setPreview] = useState<UrlPreview | null>(null)
@@ -197,7 +219,16 @@ function AddAccomDialog({ open, onClose, trip, profiles, userId }: AddAccomDialo
               <div className="flex gap-2">
                 <Input
                   value={urlInput}
-                  onChange={(e) => setUrlInput(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setUrlInput(val)
+                    // Auto-parse dates from the pasted URL
+                    const parsed = parseDatesFromUrl(val)
+                    if (parsed) {
+                      if (!checkIn) setCheckIn(parsed.checkIn)
+                      if (!checkOut) setCheckOut(parsed.checkOut)
+                    }
+                  }}
                   onKeyDown={(e) => e.key === 'Enter' && handleFetchPreview()}
                   placeholder="Paste Airbnb, Booking.com, or any URL…"
                   className="rounded-xl h-11 flex-1"
@@ -229,7 +260,7 @@ function AddAccomDialog({ open, onClose, trip, profiles, userId }: AddAccomDialo
               {ACCOM_TYPES.map((t) => (
                 <button key={t.value} type="button" onClick={() => setType(t.value)}
                   className={cn('px-3 py-1.5 rounded-xl text-[10px] font-black border-2 transition-all',
-                    type === t.value ? 'border-primary bg-primary/10 text-primary' : 'border-white/30 bg-white/40 dark:bg-slate-800 text-muted-foreground')}>
+                    type === t.value ? 'border-primary bg-primary/10 text-primary' : 'border-white/30 bg-white/40 dark:bg-white/5 text-muted-foreground')}>
                   {t.emoji} {t.label}
                 </button>
               ))}
@@ -288,7 +319,7 @@ function AddAccomDialog({ open, onClose, trip, profiles, userId }: AddAccomDialo
                   className={cn('flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black border-2 transition-all',
                     splitAmong.includes(p.id)
                       ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-white/30 bg-white/40 dark:bg-slate-800 text-muted-foreground opacity-50')}>
+                      : 'border-white/30 bg-white/40 dark:bg-white/5 text-muted-foreground opacity-50')}>
                   <MiniAvatar profile={p} size={5} />
                   {p.displayName.split(' ')[0]}
                 </button>
@@ -447,7 +478,7 @@ function AccomCard({
                 {Object.entries(accom.votes).filter(([, v]) => v).map(([uid]) => {
                   const p = profiles.find((pr) => pr.id === uid)
                   return (
-                    <div key={uid} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/60 dark:bg-slate-800 border border-white/40 text-[10px] font-bold">
+                    <div key={uid} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/60 dark:bg-white/10 border border-white/40 text-[10px] font-bold">
                       <ThumbsUp className="h-2.5 w-2.5 text-primary" />
                       <span>{p ? p.displayName.split(' ')[0] : 'Someone'}</span>
                     </div>

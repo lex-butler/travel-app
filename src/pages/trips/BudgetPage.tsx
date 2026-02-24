@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   DollarSign, Plus, Loader2, Utensils, Home, Plane, Ticket, Package,
-  ChevronDown, ChevronUp, Trash2, CheckCircle2, ArrowRight,
+  ChevronDown, ChevronUp, Trash2, CheckCircle2, ArrowRight, Pencil,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import {
   subscribeToExpenses, subscribeToSettlements,
-  addExpense, deleteExpense, addSettlement,
+  addExpense, updateExpense, deleteExpense, addSettlement,
   calcEqualSplits, calcPercentageSplits,
   calcNetBalances, simplifyDebts,
   type Debt,
@@ -64,9 +64,11 @@ interface AddExpenseDialogProps {
   trip: Trip
   profiles: MemberProfile[]
   currentUserId: string
+  initialData?: Expense
+  mode?: 'add' | 'edit'
 }
 
-function AddExpenseDialog({ open, onClose, trip, profiles, currentUserId }: AddExpenseDialogProps) {
+function AddExpenseDialog({ open, onClose, trip, profiles, currentUserId, initialData, mode = 'add' }: AddExpenseDialogProps) {
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
   const [category, setCategory] = useState<ExpenseCategory>('food')
@@ -78,6 +80,34 @@ function AddExpenseDialog({ open, onClose, trip, profiles, currentUserId }: AddE
   const [percentages, setPercentages] = useState<Record<string, string>>({})
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
+
+  // Pre-fill fields when editing an existing expense
+  useEffect(() => {
+    if (open && mode === 'edit' && initialData) {
+      setDescription(initialData.description)
+      setAmount(String(initialData.amount))
+      setCategory(initialData.category)
+      setDate(initialData.date instanceof Object && 'toDate' in initialData.date
+        ? initialData.date.toDate().toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0])
+      setPaidBy(initialData.paidBy)
+      setSplitAmong(initialData.splitAmong)
+      setSplitMethod(initialData.splitMethod ?? 'equal')
+      setNotes(initialData.notes ?? '')
+      // Restore custom splits if present
+      if (initialData.splitMethod === 'custom') {
+        const custom: Record<string, string> = {}
+        for (const [uid, val] of Object.entries(initialData.splits)) custom[uid] = String(val)
+        setCustomAmounts(custom)
+      }
+    } else if (open && mode === 'add') {
+      setDescription(''); setAmount(''); setCategory('food')
+      setDate(new Date().toISOString().split('T')[0])
+      setPaidBy(currentUserId); setSplitAmong(trip.memberIds)
+      setSplitMethod('equal'); setCustomAmounts({}); setPercentages({}); setNotes('')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   const amountNum = parseFloat(amount) || 0
 
@@ -124,22 +154,35 @@ function AddExpenseDialog({ open, onClose, trip, profiles, currentUserId }: AddE
     try {
       const splits = computeSplits()
       const dateTs = Timestamp.fromDate(new Date(date + 'T12:00:00'))
-      await addExpense(trip.id, {
-        description: description.trim(),
-        amount: amountNum,
-        currency: trip.currency,
-        category,
-        paidBy,
-        splitAmong,
-        splitMethod,
-        splits,
-        paidStatus: {},
-        date: dateTs,
-        notes: notes.trim(),
-      })
+      if (mode === 'edit' && initialData) {
+        await updateExpense(trip.id, initialData.id, {
+          description: description.trim(),
+          amount: amountNum,
+          currency: trip.currency,
+          category,
+          paidBy,
+          splitAmong,
+          splitMethod,
+          splits,
+          date: dateTs,
+          notes: notes.trim(),
+        })
+      } else {
+        await addExpense(trip.id, {
+          description: description.trim(),
+          amount: amountNum,
+          currency: trip.currency,
+          category,
+          paidBy,
+          splitAmong,
+          splitMethod,
+          splits,
+          paidStatus: {},
+          date: dateTs,
+          notes: notes.trim(),
+        })
+      }
       onClose()
-      setDescription(''); setAmount(''); setNotes('')
-      setSplitMethod('equal'); setCustomAmounts({}); setPercentages({})
     } finally {
       setSaving(false)
     }
@@ -149,7 +192,7 @@ function AddExpenseDialog({ open, onClose, trip, profiles, currentUserId }: AddE
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-md glass border-white/40 rounded-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-lg font-black uppercase tracking-tight">Add Expense</DialogTitle>
+          <DialogTitle className="text-lg font-black uppercase tracking-tight">{mode === 'edit' ? 'Edit Expense' : 'Add Expense'}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 pt-2">
@@ -184,7 +227,7 @@ function AddExpenseDialog({ open, onClose, trip, profiles, currentUserId }: AddE
                     'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider border-2 transition-all',
                     category === c.value
                       ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-white/30 bg-white/40 dark:bg-slate-800 text-muted-foreground',
+                      : 'border-white/30 bg-white/40 dark:bg-white/5 text-muted-foreground',
                   )}
                 >
                   <c.icon className="h-3 w-3" />
@@ -207,7 +250,7 @@ function AddExpenseDialog({ open, onClose, trip, profiles, currentUserId }: AddE
                     'flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black border-2 transition-all',
                     paidBy === p.id
                       ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-white/30 bg-white/40 dark:bg-slate-800 text-muted-foreground',
+                      : 'border-white/30 bg-white/40 dark:bg-white/5 text-muted-foreground',
                   )}
                 >
                   <MiniAvatar profile={p} size={5} />
@@ -230,7 +273,7 @@ function AddExpenseDialog({ open, onClose, trip, profiles, currentUserId }: AddE
                     'flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black border-2 transition-all',
                     splitAmong.includes(p.id)
                       ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-white/30 bg-white/40 dark:bg-slate-800 text-muted-foreground opacity-50',
+                      : 'border-white/30 bg-white/40 dark:bg-white/5 text-muted-foreground opacity-50',
                   )}
                 >
                   <MiniAvatar profile={p} size={5} />
@@ -243,7 +286,7 @@ function AddExpenseDialog({ open, onClose, trip, profiles, currentUserId }: AddE
           {/* Split method */}
           <div className="space-y-2">
             <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Split method</label>
-            <div className="flex rounded-xl bg-white/30 dark:bg-slate-800 p-1 gap-1">
+            <div className="flex rounded-xl bg-white/30 dark:bg-white/10 p-1 gap-1">
               {(['equal', 'custom', 'percentage'] as SplitMethod[]).map((m) => (
                 <button
                   key={m}
@@ -312,7 +355,7 @@ function AddExpenseDialog({ open, onClose, trip, profiles, currentUserId }: AddE
           </div>
 
           <Button onClick={handleSave} disabled={saving || !description.trim() || !amount} className="w-full rounded-xl h-12 font-black uppercase tracking-widest text-[10px]">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add Expense'}
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : mode === 'edit' ? 'Save Changes' : 'Add Expense'}
           </Button>
         </div>
       </DialogContent>
@@ -323,7 +366,7 @@ function AddExpenseDialog({ open, onClose, trip, profiles, currentUserId }: AddE
 // ─── Expense Card ─────────────────────────────────────────────────────────────
 
 function ExpenseCard({
-  expense, profiles, currentUserId, isHost, currency, tripId,
+  expense, profiles, currentUserId, isHost, currency, tripId, onEdit,
 }: {
   expense: Expense
   profiles: MemberProfile[]
@@ -331,12 +374,14 @@ function ExpenseCard({
   isHost: boolean
   currency: string
   tripId: string
+  onEdit: (expense: Expense) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const cat = getCategoryConfig(expense.category)
   const payer = profiles.find((p) => p.id === expense.paidBy)
   const canDelete = expense.paidBy === currentUserId || isHost
+  const canEdit = expense.paidBy === currentUserId || isHost
 
   async function handleDelete(e: React.MouseEvent) {
     e.stopPropagation()
@@ -381,11 +426,21 @@ function ExpenseCard({
             )
           })}
           {expense.notes && <p className="text-[11px] text-muted-foreground italic pt-1">{expense.notes}</p>}
-          {canDelete && (
-            <Button variant="ghost" size="sm" onClick={handleDelete} disabled={deleting}
-              className="w-full mt-2 h-8 text-destructive hover:bg-destructive/10 rounded-xl text-[10px] font-black uppercase">
-              {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Trash2 className="h-3 w-3 mr-1" /> Delete</>}
-            </Button>
+          {(canEdit || canDelete) && (
+            <div className="flex gap-2 mt-2">
+              {canEdit && (
+                <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onEdit(expense) }}
+                  className="flex-1 h-8 text-primary hover:bg-primary/10 rounded-xl text-[10px] font-black uppercase">
+                  <Pencil className="h-3 w-3 mr-1" /> Edit
+                </Button>
+              )}
+              {canDelete && (
+                <Button variant="ghost" size="sm" onClick={handleDelete} disabled={deleting}
+                  className="flex-1 h-8 text-destructive hover:bg-destructive/10 rounded-xl text-[10px] font-black uppercase">
+                  {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Trash2 className="h-3 w-3 mr-1" /> Delete</>}
+                </Button>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -405,6 +460,7 @@ export default function BudgetPage() {
   const [settlements, setSettlements] = useState<Settlement[]>([])
   const [profiles, setProfiles] = useState<MemberProfile[]>([])
   const [showAdd, setShowAdd] = useState(false)
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [settlingDebt, setSettlingDebt] = useState<string | null>(null)
 
   useEffect(() => {
@@ -588,6 +644,7 @@ export default function BudgetPage() {
                 isHost={isHost}
                 currency={currency}
                 tripId={trip.id}
+                onEdit={(expense) => setEditingExpense(expense)}
               />
             ))
           )}
@@ -650,6 +707,17 @@ export default function BudgetPage() {
           trip={trip}
           profiles={profiles}
           currentUserId={user.uid}
+        />
+      )}
+      {user && editingExpense && (
+        <AddExpenseDialog
+          open={!!editingExpense}
+          onClose={() => setEditingExpense(null)}
+          trip={trip}
+          profiles={profiles}
+          currentUserId={user.uid}
+          initialData={editingExpense}
+          mode="edit"
         />
       )}
     </div>

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { MapPin, Calendar, Users, Loader2, Copy, Check, Mail, Share2, X, DollarSign, Hotel, Map, Plane, Compass, Plus, CheckCircle2, Lock, ChevronRight } from 'lucide-react'
+import { MapPin, Calendar, Users, Loader2, Copy, Check, Mail, Share2, X, DollarSign, Hotel, Map, Plane, Compass, Plus, CheckCircle2, Lock, ChevronRight, Camera } from 'lucide-react'
 import { format, isSameDay } from 'date-fns'
+import WeatherAdvisoryWidget from '@/components/trip/WeatherAdvisoryWidget'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -14,7 +15,9 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { Calendar as CalendarWidget } from '@/components/ui/calendar'
-import { subscribeToTrip, updateMyAvailability, getUserProfiles, type MemberProfile, type DateRange } from '@/services/tripService'
+import { subscribeToTrip, updateMyAvailability, updateTrip, getUserProfiles, type MemberProfile, type DateRange } from '@/services/tripService'
+import { storage } from '@/config/firebase'
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { createInviteLink } from '@/services/inviteService'
 import { useAuthStore } from '@/stores/authStore'
 import { useTripStore } from '@/stores/tripStore'
@@ -441,7 +444,7 @@ function TripProgress({ trip }: { trip: Trip }) {
   )
 }
 
-function MembersSection({ trip, currentUserId, onInvite, onCrew, profiles }: { trip: Trip; currentUserId: string | undefined; onInvite: () => void; onCrew: () => void; profiles: MemberProfile[] }) {
+function MembersSection({ trip, currentUserId, onInvite, onCrew, profiles, isSoloTrip }: { trip: Trip; currentUserId: string | undefined; onInvite: () => void; onCrew: () => void; profiles: MemberProfile[]; isSoloTrip: boolean }) {
   const members = profiles
 
   function roleLabel(id: string) {
@@ -464,7 +467,7 @@ function MembersSection({ trip, currentUserId, onInvite, onCrew, profiles }: { t
                   <Avatar key={m.id} profile={m} size="sm" />
                 ))}
                 {members.length > 4 && (
-                  <div className="h-10 w-10 rounded-[1.25rem] bg-muted flex items-center justify-center text-[10px] font-black border-2 border-background">
+                  <div className="h-10 w-10 rounded-[1.25rem] bg-primary/10 text-primary flex items-center justify-center text-[10px] font-black border-2 border-background">
                     +{members.length - 4}
                   </div>
                 )}
@@ -474,7 +477,7 @@ function MembersSection({ trip, currentUserId, onInvite, onCrew, profiles }: { t
               </p>
             </div>
           </div>
-          {isHost && (
+          {isHost && !isSoloTrip && (
             <Button size="sm" onClick={onInvite} className="rounded-xl font-black text-[10px] uppercase tracking-wider h-10 px-5 shadow-lg shadow-primary/20 gap-1.5">
               <Plus className="h-3.5 w-3.5" />
               Invite
@@ -495,7 +498,9 @@ function MembersSection({ trip, currentUserId, onInvite, onCrew, profiles }: { t
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className={cn(
                     "text-[8px] uppercase font-black tracking-widest px-2 py-0.5 rounded-md",
-                    m.id === trip.ownerId ? "bg-primary text-white" : "bg-muted text-muted-foreground"
+                    m.id === trip.ownerId ? "bg-primary text-white"
+                    : trip.coLeadIds.includes(m.id) ? "bg-violet-500/10 text-violet-600 dark:text-violet-400"
+                    : "bg-white/40 dark:bg-white/10 text-muted-foreground border border-white/40"
                   )}>
                     {roleLabel(m.id)}
                   </span>
@@ -644,6 +649,39 @@ export default function TripDetailPage() {
   const [inviteOpen, setInviteOpen] = useState(false)
   const [availabilityOpen, setAvailabilityOpen] = useState(false)
   const [memberProfiles, setMemberProfiles] = useState<MemberProfile[]>([])
+  const [bgUploading, setBgUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  async function handleBgUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!trip || !tripId) return
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp']
+    if (!validTypes.includes(file.type)) {
+      alert('Please upload a JPG, PNG, or WEBP image.')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image must be under 5MB.')
+      return
+    }
+
+    setBgUploading(true)
+    try {
+      const fileRef = storageRef(storage, `trips/${tripId}/background`)
+      await uploadBytes(fileRef, file)
+      const downloadURL = await getDownloadURL(fileRef)
+      await updateTrip(tripId, { imageUrl: downloadURL, imageAttribution: null })
+    } catch (err) {
+      console.error('[BgUpload] error:', err)
+      alert('Upload failed. Please try again.')
+    } finally {
+      setBgUploading(false)
+      // Reset input so same file can be re-selected
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
 
   useEffect(() => {
     if (!trip) return
@@ -703,7 +741,8 @@ export default function TripDetailPage() {
 
   const destDecided = trip.destinationStatus === 'decided'
   const datesDecided = trip.dateStatus === 'decided'
-  const isSolo = trip.memberIds.length === 1
+  const isSoloTrip = trip.tripType === 'solo'       // solo trip type — hides all invite UI
+  const isSolo = trip.memberIds.length === 1        // currently alone — for mock member display
   const isHost = user?.uid === trip.ownerId || trip.coLeadIds.includes(user?.uid ?? '')
 
   return (
@@ -778,9 +817,10 @@ export default function TripDetailPage() {
                 {datesDecided && trip.dates ? trip.dates : trip.dateStatus === 'poll' ? 'Finding Dates' : 'Dates TBD'}
               </button>
               <button
-                onClick={() => setInviteOpen(true)}
+                onClick={isSoloTrip ? undefined : () => setInviteOpen(true)}
                 className={cn(
-                  "inline-flex items-center gap-2 rounded-xl backdrop-blur-md px-3 py-1.5 text-xs font-bold border shadow-sm transition-all hover:scale-[1.02] active:scale-95",
+                  "inline-flex items-center gap-2 rounded-xl backdrop-blur-md px-3 py-1.5 text-xs font-bold border shadow-sm transition-all",
+                  !isSoloTrip && "hover:scale-[1.02] active:scale-95",
                   trip.imageUrl
                     ? "bg-black/20 text-white border-white/20 hover:bg-black/40"
                     : "bg-white/50 dark:bg-white/5 border-white/50 text-foreground hover:bg-white/70"
@@ -803,10 +843,12 @@ export default function TripDetailPage() {
                       </div>
                     )
                   })}
-                  {/* Plus button */}
-                  <div className="h-6 w-6 rounded-full border-2 border-dashed border-primary/50 bg-primary/10 text-primary flex items-center justify-center flex-shrink-0 hover:bg-primary hover:text-white hover:border-primary transition-colors">
-                    <Plus className="h-3 w-3" />
-                  </div>
+                  {/* Plus button — hidden for solo trips */}
+                  {!isSoloTrip && (
+                    <div className="h-6 w-6 rounded-full border-2 border-dashed border-primary/50 bg-primary/10 text-primary flex items-center justify-center flex-shrink-0 hover:bg-primary hover:text-white hover:border-primary transition-colors">
+                      <Plus className="h-3 w-3" />
+                    </div>
+                  )}
                 </div>
                 <span className={trip.imageUrl ? "text-white/80" : "text-muted-foreground"}>
                   {Math.max(trip.memberIds.length, memberProfiles.length)} {Math.max(trip.memberIds.length, memberProfiles.length) === 1 ? 'traveler' : 'travelers'}
@@ -815,13 +857,57 @@ export default function TripDetailPage() {
             </div>
           </div>
 
+          {/* Change Background button — host only, top-right */}
+          {isHost && (
+            <div className="absolute top-3 right-3 z-10">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".jpg,.jpeg,.png,.webp"
+                className="hidden"
+                onChange={handleBgUpload}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={bgUploading}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[10px] font-bold backdrop-blur-md border transition-all",
+                  trip.imageUrl
+                    ? "bg-black/20 text-white/70 border-white/10 hover:bg-black/40 hover:text-white"
+                    : "bg-white/30 text-foreground/60 border-white/30 hover:bg-white/50"
+                )}
+              >
+                {bgUploading ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Camera className="h-3 w-3" />
+                )}
+                {bgUploading ? 'Uploading…' : 'Change Photo'}
+              </button>
+            </div>
+          )}
+
+          {/* Image attribution — bottom-left */}
+          {trip.imageAttribution && (
+            <div className="absolute bottom-3 left-3 z-10 pointer-events-none">
+              <span className="text-[9px] text-white/40 leading-tight max-w-[60%]">
+                {trip.imageAttribution}
+              </span>
+            </div>
+          )}
+
         </div>
       </div>
 
+      {/* Weather & Advisory — only when destination has coordinates */}
+      {trip.destinationLat && trip.destinationLng && (
+        <WeatherAdvisoryWidget trip={trip} />
+      )}
+
       {/* Main Content */}
       <div className="grid grid-cols-1 gap-6">
-        {/* Invite prompt (solo trip only) */}
-        {isSolo && trip.tripType === 'group' && isHost && (
+        {/* Invite prompt (show when alone on a group trip) */}
+        {isSolo && !isSoloTrip && isHost && (
           <div className="animate-slide-up" style={{ animationDelay: '0.1s' }}>
             <InvitePromptCard onInvite={() => setInviteOpen(true)} />
           </div>
@@ -840,7 +926,7 @@ export default function TripDetailPage() {
 
         {/* Members list */}
         <div className="animate-slide-up" style={{ animationDelay: '0.3s' }}>
-          <MembersSection trip={trip} currentUserId={user?.uid} onInvite={() => setInviteOpen(true)} onCrew={() => navigate(`/trips/${tripId}/crew`)} profiles={memberProfiles} />
+          <MembersSection trip={trip} currentUserId={user?.uid} onInvite={() => setInviteOpen(true)} onCrew={() => navigate(`/trips/${tripId}/crew`)} profiles={memberProfiles} isSoloTrip={isSoloTrip} />
         </div>
       </div>
 

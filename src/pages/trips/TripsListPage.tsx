@@ -196,7 +196,7 @@ function TripCard({
                     </div>
                   ))}
                   {memberCount > 4 && (
-                    <div className="h-7 w-7 rounded-lg bg-muted flex items-center justify-center text-[9px] font-black border-2 border-white dark:border-slate-900 shadow-sm">
+                    <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-[9px] font-black border-2 border-white dark:border-slate-900 shadow-sm">
                       +{memberCount - 4}
                     </div>
                   )}

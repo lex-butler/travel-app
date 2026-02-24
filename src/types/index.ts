@@ -40,12 +40,30 @@ export interface Trip {
   budget: number | null
   currency: string
   imageUrl?: string
+  imageAttribution?: string | null     // Attribution text required for Unsplash images
+  // Structured destination data — populated when user selects via Places autocomplete
+  destinationPlaceId?: string | null
+  destinationLat?: number | null
+  destinationLng?: number | null
+  destinationFormattedAddress?: string | null
   // userId → array of selected date ranges, used when dateStatus === 'poll'
   availability: Record<string, Array<{ start: string; end: string }>>
   archived?: boolean
   completed?: boolean
   createdAt: Timestamp
   updatedAt: Timestamp
+}
+
+// ─── Places Cache ──────────────────────────────────────────────────────────────
+
+export interface PlacesCache {
+  place_id: string
+  display_name: string
+  formatted_address: string
+  lat: number
+  lng: number
+  photo_url: string | null
+  cached_at: Timestamp
 }
 
 // ─── Destinations ─────────────────────────────────────────────────────────────
@@ -248,5 +266,18 @@ export interface Invite {
   status: InviteStatus
   token: string
   expiresAt: Timestamp
+  createdAt: Timestamp
+}
+
+// ─── Packing List ─────────────────────────────────────────────────────────────
+
+export type PackingCategory = 'Clothing' | 'Toiletries' | 'Electronics' | 'Documents' | 'Essentials' | 'Other'
+
+export interface PackingItem {
+  id: string
+  text: string
+  checked: boolean
+  category: PackingCategory
+  addedBy: string
   createdAt: Timestamp
 }

@@ -27,6 +27,13 @@ export interface CreateTripInput {
   ownerId: string
   imageUrl?: string
   memberIds?: string[]
+  budget?: number | null
+  currency?: string
+  // Structured destination data from Places autocomplete
+  destinationPlaceId?: string | null
+  destinationLat?: number | null
+  destinationLng?: number | null
+  destinationFormattedAddress?: string | null
 }
 
 // ─── Create ───────────────────────────────────────────────────────────────────
@@ -44,9 +51,14 @@ export async function createTrip(input: CreateTripInput): Promise<string> {
     coLeadIds: [],
     memberIds: input.memberIds || [input.ownerId],
     phase: 'planning',
-    budget: null,
-    currency: 'USD',
+    budget: input.budget ?? null,
+    currency: input.currency ?? 'USD',
     imageUrl: input.imageUrl || null,
+    imageAttribution: null,
+    destinationPlaceId: input.destinationPlaceId ?? null,
+    destinationLat: input.destinationLat ?? null,
+    destinationLng: input.destinationLng ?? null,
+    destinationFormattedAddress: input.destinationFormattedAddress ?? null,
     availability: {},
     archived: false,
     createdAt: serverTimestamp(),
@@ -130,7 +142,9 @@ export function subscribeToTrip(
 
 export type TripUpdatableFields = Partial<Pick<Trip,
   'name' | 'destination' | 'destinationStatus' | 'dates' | 'dateStatus' |
-  'tripType' | 'estimatedSize' | 'budget' | 'currency' | 'phase' | 'imageUrl'
+  'tripType' | 'estimatedSize' | 'budget' | 'currency' | 'phase' |
+  'imageUrl' | 'imageAttribution' |
+  'destinationPlaceId' | 'destinationLat' | 'destinationLng' | 'destinationFormattedAddress'
 >>
 
 export async function updateTrip(tripId: string, updates: TripUpdatableFields): Promise<void> {
