@@ -93,7 +93,7 @@ export default function AppLayout() {
   return (
     <div
       className="relative overflow-hidden w-screen bg-[#0a0a0a]"
-      style={{ height: '100dvh', perspective: '1200px' }}
+      style={{ height: '100svh', perspective: '1200px' }}
     >
       {/* ── Navigation Drawer (mobile only) ── */}
       <NavigationDrawer
@@ -117,10 +117,13 @@ export default function AppLayout() {
         <div className="flex flex-col h-full overflow-y-auto">
 
           {/* ── HEADER ── */}
-          <header className={cn(
-            'sticky top-0 z-50 px-4 sm:px-6 lg:px-8 py-3',
-            drawerOpen && !isLg && 'pointer-events-none',
-          )}>
+          <header
+            className={cn(
+              'sticky top-0 z-50 px-4 sm:px-6 lg:px-8 pb-3',
+              drawerOpen && !isLg && 'pointer-events-none',
+            )}
+            style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
+          >
             {/* ── Mobile header (< lg) ── */}
             <div className="flex lg:hidden items-center glass h-14 rounded-2xl shadow-lg shadow-primary/5 px-4 relative animate-slide-down">
               {/* Hamburger */}
@@ -239,7 +242,7 @@ export default function AppLayout() {
           </header>
 
           {/* ── Page content ── */}
-          <main className="flex-1 pb-10">
+          <main className="flex-1" style={{ paddingBottom: 'max(2.5rem, env(safe-area-inset-bottom))' }}>
             <div className="container mx-auto px-4 sm:px-6 lg:px-20 max-w-7xl pt-4 lg:pt-6 animate-fade-in">
               <Outlet />
             </div>
