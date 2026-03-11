@@ -181,10 +181,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!authLoading && user) {
-      const target = sessionStorage.getItem('postAuthRedirect') || localStorage.getItem('postAuthRedirect') || redirect
-      sessionStorage.removeItem('postAuthRedirect')
-      localStorage.removeItem('postAuthRedirect')
-      navigate(target, { replace: true })
+      navigate(redirect, { replace: true })
     }
   }, [user, authLoading, navigate, redirect])
 
@@ -195,21 +192,10 @@ export default function LoginPage() {
   async function handleGoogle() {
     setGoogleError('')
     setGoogleLoading(true)
-    // Save redirect target in case the iOS redirect flow navigates away and back
-    sessionStorage.setItem('postAuthRedirect', redirect)
-    localStorage.setItem('postAuthRedirect', redirect)
     try {
-      const user = await signInWithGoogle()
-      if (user) {
-        // Popup completed — navigate now
-        sessionStorage.removeItem('postAuthRedirect')
-        localStorage.removeItem('postAuthRedirect')
-        onSuccess()
-      }
-      // If user is null, iOS redirect is in progress — browser navigates away
+      await signInWithGoogle()
+      onSuccess()
     } catch {
-      sessionStorage.removeItem('postAuthRedirect')
-      localStorage.removeItem('postAuthRedirect')
       setGoogleError('Google sign-in failed. Please try again.')
       setGoogleLoading(false)
     }

@@ -1,7 +1,6 @@
 import {
   GoogleAuthProvider,
   signInWithPopup,
-  signInWithRedirect,
   getRedirectResult,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -12,15 +11,6 @@ import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore'
 import { auth, db } from '@/config/firebase'
 
 const googleProvider = new GoogleAuthProvider()
-
-// iOS (all browsers on iOS use WebKit and block popups) must use redirect
-function isIOS() {
-  return (
-    /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
-    // iPadOS 13+ reports as MacIntel with touch support
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  )
-}
 
 // Upsert the user document in Firestore after any sign-in
 async function upsertUserDoc(uid: string, data: { email: string; displayName: string; photoURL: string | null }) {
@@ -41,15 +31,11 @@ async function upsertUserDoc(uid: string, data: { email: string; displayName: st
   }
 }
 
-// Sign in with Google.
-// Desktop: opens a popup and returns the user directly.
-// iOS: initiates a redirect (browser navigates away); returns null.
-//      Result is handled by handleGoogleRedirectResult() on the next page load.
+// Sign in with Google via popup (works on all platforms including iOS Safari 14.5+).
+// Popup is more reliable than redirect on iOS because Safari's ITP can clear
+// the IndexedDB credential store between a redirect and return, silently
+// breaking getRedirectResult().
 export async function signInWithGoogle() {
-  if (isIOS()) {
-    await signInWithRedirect(auth, googleProvider)
-    return null
-  }
   const result = await signInWithPopup(auth, googleProvider)
   const { uid, email, displayName, photoURL } = result.user
   await upsertUserDoc(uid, {
@@ -60,7 +46,7 @@ export async function signInWithGoogle() {
   return result.user
 }
 
-// Call on app mount — handles the return from Google redirect (iOS only)
+// No-op: kept for any in-flight redirect sessions from before the popup migration.
 export async function handleGoogleRedirectResult() {
   const result = await getRedirectResult(auth)
   if (result) {

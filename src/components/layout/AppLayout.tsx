@@ -85,7 +85,7 @@ export default function AppLayout() {
 
   async function handleSignOut() {
     await signOut()
-    navigate('/login', { replace: true })
+    navigate('/', { replace: true })
   }
 
   const animateState = drawerOpen && !isLg ? 'open' : 'closed'
