@@ -92,8 +92,8 @@ export default function AppLayout() {
 
   return (
     <div
-      className="relative overflow-hidden w-screen h-screen bg-[#0a0a0a]"
-      style={{ perspective: '1200px' }}
+      className="relative overflow-hidden w-screen bg-[#0a0a0a]"
+      style={{ height: '100dvh', perspective: '1200px' }}
     >
       {/* ── Navigation Drawer (mobile only) ── */}
       <NavigationDrawer

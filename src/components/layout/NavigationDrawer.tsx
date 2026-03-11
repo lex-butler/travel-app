@@ -103,8 +103,11 @@ export default function NavigationDrawer({
           animate="open"
           exit="closed"
         >
-          {/* User card */}
-          <div className="px-5 pt-14 pb-6 border-b border-white/8">
+          {/* User card — top padding accounts for iPhone notch / Dynamic Island */}
+          <div
+            className="px-5 pb-6 border-b border-white/8"
+            style={{ paddingTop: 'max(3.5rem, calc(env(safe-area-inset-top) + 1rem))' }}
+          >
             <div className="flex items-center gap-3">
               <Avatar className="h-11 w-11 border-2 border-white/20">
                 <AvatarImage src={user?.photoURL ?? undefined} />
@@ -162,8 +165,11 @@ export default function NavigationDrawer({
             ))}
           </div>
 
-          {/* Sign out */}
-          <div className="px-3 pb-8 border-t border-white/8 pt-4">
+          {/* Sign out — bottom padding accounts for iPhone home indicator */}
+          <div
+            className="px-3 border-t border-white/8 pt-4"
+            style={{ paddingBottom: 'max(2rem, calc(env(safe-area-inset-bottom) + 1rem))' }}
+          >
             <motion.button
               custom={itemIndex}
               variants={itemVariants}
