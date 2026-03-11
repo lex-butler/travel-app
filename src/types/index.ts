@@ -2,6 +2,15 @@ import type { Timestamp } from 'firebase/firestore'
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
+export type PaymentMethodType = 'venmo' | 'cashapp' | 'paypal' | 'zelle' | 'applepay' | 'other'
+
+export interface PaymentMethod {
+  id: string
+  type: PaymentMethodType
+  handle: string      // @username, $cashtag, phone number, etc.
+  label?: string      // optional custom label
+}
+
 export interface User {
   id: string
   email: string
@@ -15,6 +24,7 @@ export interface User {
   homeCity: string | null
   homeLat: number | null
   homeLng: number | null
+  paymentMethods?: PaymentMethod[]
 }
 
 // ─── Trips ────────────────────────────────────────────────────────────────────
@@ -217,6 +227,11 @@ export interface Settlement {
   amount: number
   currency: string
   note: string
+  // Payment method tracking (optional — set when debtor uses PaymentSheet)
+  paymentMethodType?: PaymentMethodType
+  status?: 'pending' | 'confirmed'   // pending = payment sent, awaiting payee confirmation
+  initiatedBy?: string               // userId who clicked "Pay"
+  confirmedAt?: Timestamp
   createdAt: Timestamp
 }
 

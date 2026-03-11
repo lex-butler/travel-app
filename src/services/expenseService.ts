@@ -86,6 +86,17 @@ export async function deleteSettlement(
   await deleteDoc(doc(db, 'trips', tripId, 'settlements', settlementId))
 }
 
+export async function updateSettlementStatus(
+  tripId: string,
+  settlementId: string,
+  status: 'confirmed',
+): Promise<void> {
+  await updateDoc(doc(db, 'trips', tripId, 'settlements', settlementId), {
+    status,
+    confirmedAt: serverTimestamp(),
+  })
+}
+
 // ─── Split helpers ────────────────────────────────────────────────────────────
 
 /** Round to 2 decimal places, with remainder assigned to first uid */

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '@/config/firebase'
 import { useAuthStore } from '@/stores/authStore'
@@ -9,6 +9,7 @@ import TripLayout from '@/components/layout/TripLayout'
 import { handleGoogleRedirectResult } from '@/services/auth'
 
 // Lazy-load pages for code splitting
+const LandingPage = lazy(() => import('@/pages/LandingPage'))
 const LoginPage = lazy(() => import('@/pages/auth/LoginPage'))
 const TripsListPage = lazy(() => import('@/pages/trips/TripsListPage'))
 const TripDetailPage = lazy(() => import('@/pages/trips/TripDetailPage'))
@@ -20,6 +21,7 @@ const TripSettingsPage = lazy(() => import('@/pages/trips/TripSettingsPage'))
 const BudgetPage = lazy(() => import('@/pages/trips/BudgetPage'))
 const AccommodationsPage = lazy(() => import('@/pages/trips/AccommodationsPage'))
 const PackingListPage = lazy(() => import('@/pages/trips/PackingListPage'))
+const ProfilePage = lazy(() => import('@/pages/ProfilePage'))
 const InvitePage = lazy(() => import('@/pages/invite/InvitePage'))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 
@@ -49,6 +51,7 @@ function App() {
       >
         <Routes>
           {/* Public routes */}
+          <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/invite/:token" element={<InvitePage />} />
 
@@ -58,8 +61,8 @@ function App() {
             <Route path="/trips/new" element={<NewTripPage />} />
 
             <Route element={<AppLayout />}>
-              <Route index element={<Navigate to="/trips" replace />} />
               <Route path="/trips" element={<TripsListPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
 
               <Route element={<TripLayout />}>
                 <Route path="/trips/:tripId" element={<TripDetailPage />} />

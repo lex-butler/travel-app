@@ -47,8 +47,9 @@ service cloud.firestore {
       }
 
       // Settlements subcollection — trip members only
+      // update: allows payee to confirm receipt (status: pending → confirmed)
       match /settlements/{settlementId} {
-        allow read, create, delete: if request.auth != null
+        allow read, create, update, delete: if request.auth != null
                       && request.auth.uid in get(/databases/$(database)/documents/trips/$(tripId)).data.memberIds;
       }
 

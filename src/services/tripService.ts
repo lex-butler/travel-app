@@ -12,7 +12,7 @@ import {
   onSnapshot,
 } from 'firebase/firestore'
 import { db } from '@/config/firebase'
-import type { Trip } from '@/types'
+import type { Trip, PaymentMethod } from '@/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -95,6 +95,7 @@ export interface MemberProfile {
   homeCity: string | null
   homeLat: number | null
   homeLng: number | null
+  paymentMethods?: PaymentMethod[]
 }
 
 export async function getUserProfiles(userIds: string[]): Promise<MemberProfile[]> {

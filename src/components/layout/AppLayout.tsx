@@ -98,9 +98,11 @@ export default function AppLayout() {
                     </DropdownMenuItem>
                   )}
 
-                  <DropdownMenuItem disabled className="rounded-xl m-1 gap-2.5 p-2.5 cursor-not-allowed opacity-50 text-sm">
-                    <User className="h-4 w-4" />
-                    <span>Profile</span>
+                  <DropdownMenuItem asChild className="rounded-xl m-1 gap-2.5 p-2.5 text-sm cursor-pointer">
+                    <Link to="/profile">
+                      <User className="h-4 w-4" />
+                      <span>Profile</span>
+                    </Link>
                   </DropdownMenuItem>
 
                   <DropdownMenuSeparator className="bg-white/10" />

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   DollarSign, Plus, Loader2, Utensils, Home, Plane, Ticket, Package,
   ChevronDown, ChevronUp, Trash2, CheckCircle2, ArrowRight, Pencil,
+  ExternalLink, Copy, Clock,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -13,14 +14,14 @@ import {
 } from '@/components/ui/dialog'
 import {
   subscribeToExpenses, subscribeToSettlements,
-  addExpense, updateExpense, deleteExpense, addSettlement,
+  addExpense, updateExpense, deleteExpense, addSettlement, updateSettlementStatus,
   calcEqualSplits, calcPercentageSplits,
   calcNetBalances, simplifyDebts,
   type Debt,
 } from '@/services/expenseService'
 import { subscribeToTrip, getUserProfiles, type MemberProfile } from '@/services/tripService'
 import { useAuthStore } from '@/stores/authStore'
-import type { Trip, Expense, Settlement, ExpenseCategory, SplitMethod } from '@/types'
+import type { Trip, Expense, Settlement, ExpenseCategory, SplitMethod, PaymentMethod, PaymentMethodType } from '@/types'
 import { cn } from '@/lib/utils'
 import { Timestamp } from 'firebase/firestore'
 
@@ -42,6 +43,27 @@ function formatCurrency(amount: number, currency: string) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 2 }).format(amount)
 }
 
+// ─── Payment method config ────────────────────────────────────────────────────
+
+const PM_CONFIG: Record<PaymentMethodType, { label: string; emoji: string; gradient: string }> = {
+  venmo:    { label: 'Venmo',     emoji: '💙', gradient: 'from-blue-500 to-blue-700' },
+  cashapp:  { label: 'Cash App',  emoji: '💚', gradient: 'from-emerald-500 to-emerald-800' },
+  paypal:   { label: 'PayPal',    emoji: '💛', gradient: 'from-sky-500 to-indigo-700' },
+  zelle:    { label: 'Zelle',     emoji: '💜', gradient: 'from-violet-500 to-purple-800' },
+  applepay: { label: 'Apple Pay', emoji: '🍎', gradient: 'from-slate-700 to-slate-900' },
+  other:    { label: 'Other',     emoji: '💳', gradient: 'from-slate-500 to-slate-700' },
+}
+
+function getDeepLink(method: PaymentMethod, amount: number): string | null {
+  const handle = method.handle.replace(/^[@$]/, '')
+  switch (method.type) {
+    case 'venmo':   return `https://venmo.com/${handle}?txn=pay&amount=${amount}&note=TripSync`
+    case 'cashapp': return `https://cash.app/$${handle}/${amount}`
+    case 'paypal':  return `https://paypal.me/${handle}/${amount}`
+    default:        return null
+  }
+}
+
 // ─── Mini avatar ─────────────────────────────────────────────────────────────
 
 function MiniAvatar({ profile, size = 8 }: { profile: MemberProfile; size?: number }) {
@@ -53,6 +75,164 @@ function MiniAvatar({ profile, size = 8 }: { profile: MemberProfile; size?: numb
         ? <img src={profile.photoURL} alt={profile.displayName} className="h-full w-full object-cover" />
         : <div className="h-full w-full bg-primary/10 text-primary font-black flex items-center justify-center text-[9px]">{initials}</div>}
     </div>
+  )
+}
+
+// ─── Pending Settlement Card ──────────────────────────────────────────────────
+
+function PendingSettlementCard({ settlement, fromProfile, currency, tripId }: {
+  settlement: Settlement
+  fromProfile: MemberProfile | undefined
+  currency: string
+  tripId: string
+}) {
+  const [confirming, setConfirming] = useState(false)
+  const [confirmed, setConfirmed] = useState(false)
+  const config = settlement.paymentMethodType ? PM_CONFIG[settlement.paymentMethodType] : null
+  const firstName = fromProfile?.displayName.split(' ')[0] ?? 'Someone'
+
+  async function handleConfirm() {
+    setConfirming(true)
+    try {
+      await updateSettlementStatus(tripId, settlement.id, 'confirmed')
+      setConfirmed(true)
+    } finally {
+      setConfirming(false)
+    }
+  }
+
+  if (confirmed) return null
+
+  return (
+    <Card className="p-4 glass border-amber-500/30 bg-amber-500/5 rounded-2xl flex items-center gap-3">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          {fromProfile && <MiniAvatar profile={fromProfile} size={7} />}
+          <div className="min-w-0">
+            <p className="text-[11px] font-black truncate">
+              {firstName} paid you {formatCurrency(settlement.amount, currency)}
+              {config && <span className="font-medium"> via {config.label}</span>}
+            </p>
+            <p className="text-[10px] text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1 mt-0.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+              Pending your confirmation
+            </p>
+          </div>
+        </div>
+      </div>
+      <Button
+        size="sm"
+        onClick={handleConfirm}
+        disabled={confirming}
+        className="shrink-0 h-8 rounded-xl text-[10px] font-black bg-emerald-500 hover:bg-emerald-600 text-white uppercase tracking-widest"
+      >
+        {confirming ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Confirm ✓'}
+      </Button>
+    </Card>
+  )
+}
+
+// ─── Payment Sheet ────────────────────────────────────────────────────────────
+
+function PaymentMethodRow({ method, onClick, disabled }: {
+  method: PaymentMethod
+  onClick: () => void
+  disabled: boolean
+}) {
+  const config = PM_CONFIG[method.type]
+  const hasLink = ['venmo', 'cashapp', 'paypal'].includes(method.type)
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        'w-full rounded-2xl bg-gradient-to-br p-4 text-white shadow-lg transition-transform active:scale-95 text-left',
+        config.gradient,
+        disabled && 'opacity-50 cursor-not-allowed',
+      )}
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-widest opacity-60">{config.label}</p>
+          <p className="font-black mt-0.5">{method.handle}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xl">{config.emoji}</span>
+          {hasLink
+            ? <ExternalLink className="h-4 w-4 opacity-60" />
+            : <Copy className="h-4 w-4 opacity-60" />}
+        </div>
+      </div>
+    </button>
+  )
+}
+
+function PaymentSheet({ open, onClose, debt, toProfile, currency, tripId }: {
+  open: boolean
+  onClose: () => void
+  debt: Debt
+  toProfile: MemberProfile
+  currency: string
+  tripId: string
+}) {
+  const [paying, setPaying] = useState(false)
+  const firstName = toProfile.displayName.split(' ')[0]
+
+  async function handlePay(method: PaymentMethod) {
+    setPaying(true)
+    try {
+      const link = getDeepLink(method, debt.amount)
+      if (link) {
+        window.open(link, '_blank')
+      } else {
+        // Zelle / Apple Pay / Other — copy handle to clipboard
+        await navigator.clipboard.writeText(method.handle).catch(() => {})
+      }
+      await addSettlement(tripId, {
+        from: debt.from,
+        to: debt.to,
+        amount: debt.amount,
+        currency,
+        note: '',
+        paymentMethodType: method.type,
+        status: 'pending',
+        initiatedBy: debt.from,
+      })
+      onClose()
+    } finally {
+      setPaying(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-sm glass border-white/40 rounded-3xl">
+        <DialogHeader>
+          <DialogTitle className="font-black uppercase tracking-tight">Pay {firstName}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          <p className="text-sm text-muted-foreground">
+            Send <span className="font-black text-foreground">{formatCurrency(debt.amount, currency)}</span> to {firstName}
+          </p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Choose method</p>
+          <div className="space-y-3">
+            {toProfile.paymentMethods?.map((method) => (
+              <PaymentMethodRow
+                key={method.id}
+                method={method}
+                onClick={() => handlePay(method)}
+                disabled={paying}
+              />
+            ))}
+          </div>
+          <p className="text-[10px] text-muted-foreground text-center">
+            {['venmo', 'cashapp', 'paypal'].some(t => toProfile.paymentMethods?.some(m => m.type === t))
+              ? 'Tapping a card opens the app. Copy methods show the handle.'
+              : 'Handle copied to clipboard — complete the payment in your banking app.'}
+          </p>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -462,6 +642,7 @@ export default function BudgetPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [settlingDebt, setSettlingDebt] = useState<string | null>(null)
+  const [paymentSheetDebt, setPaymentSheetDebt] = useState<Debt | null>(null)
 
   useEffect(() => {
     if (!tripId) return
@@ -495,6 +676,11 @@ export default function BudgetPage() {
   // Balances
   const netBalances = calcNetBalances(expenses, settlements, trip.memberIds)
   const debts = simplifyDebts(netBalances, trip.memberIds)
+
+  // Pending settlements where current user is the payee (needs confirmation)
+  const pendingForMe = settlements.filter(
+    (s) => s.status === 'pending' && s.to === user?.uid,
+  )
 
   async function handleSettle(debt: Debt) {
     const key = `${debt.from}-${debt.to}`
@@ -652,7 +838,26 @@ export default function BudgetPage() {
 
         {/* Balances Tab */}
         <TabsContent value="balances" className="space-y-3">
-          {debts.length === 0 ? (
+          {/* Pending confirmations — shown to payee */}
+          {pendingForMe.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400 px-1 flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5" /> Waiting for your confirmation
+              </p>
+              {pendingForMe.map((s) => (
+                <PendingSettlementCard
+                  key={s.id}
+                  settlement={s}
+                  fromProfile={profiles.find((p) => p.id === s.from)}
+                  currency={currency}
+                  tripId={trip.id}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* All settled */}
+          {debts.length === 0 && pendingForMe.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <div className="h-16 w-16 rounded-3xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center mb-4">
                 <CheckCircle2 className="h-8 w-8" />
@@ -660,38 +865,53 @@ export default function BudgetPage() {
               <p className="font-black text-sm uppercase tracking-widest">All settled up!</p>
               <p className="text-xs font-medium text-muted-foreground mt-1">No outstanding balances</p>
             </div>
-          ) : (
+          )}
+
+          {/* Debts list */}
+          {debts.length > 0 && (
             <>
               <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-1">Who owes who</p>
               {debts.map((debt) => {
                 const fromProfile = profiles.find((p) => p.id === debt.from)
                 const toProfile = profiles.find((p) => p.id === debt.to)
                 const key = `${debt.from}-${debt.to}`
-                const isMe = debt.from === user?.uid
+                const isDebtor = debt.from === user?.uid
+                const isCreditor = debt.to === user?.uid
+                const hasPayeeMethods = (toProfile?.paymentMethods?.length ?? 0) > 0
                 return (
-                  <Card key={key} className={cn('p-4 glass border-white/40 rounded-2xl flex items-center gap-4', isMe && 'border-destructive/30 bg-destructive/5')}>
+                  <Card key={key} className={cn('p-4 glass border-white/40 rounded-2xl flex items-center gap-4', isDebtor && 'border-destructive/30 bg-destructive/5')}>
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       {fromProfile && <MiniAvatar profile={fromProfile} size={9} />}
                       <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
                       {toProfile && <MiniAvatar profile={toProfile} size={9} />}
                       <div className="min-w-0 ml-1">
                         <p className="text-[11px] font-black truncate">
-                          {isMe ? 'You' : fromProfile?.displayName.split(' ')[0] ?? 'Someone'}
+                          {isDebtor ? 'You' : fromProfile?.displayName.split(' ')[0] ?? 'Someone'}
                           {' owes '}
                           {debt.to === user?.uid ? 'you' : toProfile?.displayName.split(' ')[0] ?? 'Someone'}
                         </p>
                         <p className="text-lg font-black text-destructive">{formatCurrency(debt.amount, currency)}</p>
                       </div>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleSettle(debt)}
-                      disabled={settlingDebt === key}
-                      className="shrink-0 h-8 rounded-xl text-[10px] font-black uppercase tracking-widest border-2"
-                    >
-                      {settlingDebt === key ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Settled'}
-                    </Button>
+                    {isDebtor && hasPayeeMethods ? (
+                      <Button
+                        size="sm"
+                        onClick={() => setPaymentSheetDebt(debt)}
+                        className="shrink-0 h-8 rounded-xl text-[10px] font-black uppercase tracking-widest"
+                      >
+                        Pay
+                      </Button>
+                    ) : (isDebtor || isCreditor) ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleSettle(debt)}
+                        disabled={settlingDebt === key}
+                        className="shrink-0 h-8 rounded-xl text-[10px] font-black uppercase tracking-widest border-2"
+                      >
+                        {settlingDebt === key ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Settled'}
+                      </Button>
+                    ) : null}
                   </Card>
                 )
               })}
@@ -720,6 +940,20 @@ export default function BudgetPage() {
           mode="edit"
         />
       )}
+      {paymentSheetDebt && (() => {
+        const toProfile = profiles.find((p) => p.id === paymentSheetDebt.to)
+        if (!toProfile) return null
+        return (
+          <PaymentSheet
+            open={!!paymentSheetDebt}
+            onClose={() => setPaymentSheetDebt(null)}
+            debt={paymentSheetDebt}
+            toProfile={toProfile}
+            currency={currency}
+            tripId={trip.id}
+          />
+        )
+      })()}
     </div>
   )
 }
