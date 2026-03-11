@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { updateProfile } from 'firebase/auth'
-import { MapPin, Plus, Loader2, Camera, ArrowLeft, Trash2, Copy, ExternalLink } from 'lucide-react'
+import { MapPin, Plus, Loader2, Camera, Trash2, Copy, ExternalLink } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { db, storage, auth } from '@/config/firebase'
 import { useAuthStore } from '@/stores/authStore'
@@ -147,17 +147,10 @@ function CardDetail({
       transition={{ type: 'spring', stiffness: 320, damping: 28 }}
       className="space-y-4"
     >
-      {/* Back button */}
-      <button
-        onClick={onClose}
-        className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" /> Back to Wallet
-      </button>
-
-      {/* Full card — logo top-left, handle bottom */}
+      {/* Full card — tap anywhere on card to go back */}
       <div
-        className="relative w-full rounded-[22px] overflow-hidden"
+        onClick={onClose}
+        className="relative w-full rounded-[22px] overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
         style={{
           aspectRatio: '1.586',
           background: `linear-gradient(145deg, ${cfg.from} 0%, ${cfg.to} 100%)`,
@@ -178,7 +171,7 @@ function CardDetail({
             <ClearbitLogo type={method.type} className="h-12 w-12 rounded-xl" />
             <button
               onClick={(e) => { e.stopPropagation(); onDelete() }}
-              className="h-7 w-7 rounded-full flex items-center justify-center transition-colors"
+              className="h-7 w-7 rounded-full flex items-center justify-center transition-colors active:scale-90"
               style={{ background: 'rgba(0,0,0,0.22)' }}
             >
               <Trash2 className="h-3.5 w-3.5 text-white" />
