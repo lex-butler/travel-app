@@ -157,17 +157,43 @@ export default function AppLayout() {
                 <span className="text-primary/90">TripSync</span>
               </Link>
 
-              {/* Avatar → /profile */}
+              {/* Avatar dropdown (mobile) — same items as desktop */}
               {user && (
-                <Link
-                  to="/profile"
-                  className="pointer-events-auto ml-auto rounded-xl transition-transform active:scale-95"
-                >
-                  <Avatar className="h-8 w-8 border-2 border-white/50">
-                    <AvatarImage src={user.photoURL ?? undefined} alt={user.displayName ?? 'User'} />
-                    <AvatarFallback className="bg-background text-[10px]">{getInitials(user.displayName)}</AvatarFallback>
-                  </Avatar>
-                </Link>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="pointer-events-auto ml-auto rounded-xl active:scale-95 transition-transform focus-visible:outline-none">
+                      <Avatar className="h-8 w-8 border-2 border-white/50">
+                        <AvatarImage src={user.photoURL ?? undefined} alt={user.displayName ?? 'User'} />
+                        <AvatarFallback className="bg-background text-[10px]">{getInitials(user.displayName)}</AvatarFallback>
+                      </Avatar>
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-52 glass rounded-2xl border-white/20 p-1.5 shadow-xl animate-scale-in">
+                    <DropdownMenuLabel className="font-normal p-3">
+                      <p className="text-sm font-bold truncate">{user.displayName ?? 'Traveler'}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator className="bg-white/10" />
+                    {!isOnTripsPage && (
+                      <DropdownMenuItem asChild className="rounded-xl m-1 gap-2.5 p-2.5 text-sm cursor-pointer">
+                        <Link to="/trips"><Map className="h-4 w-4" /><span>My Trips</span></Link>
+                      </DropdownMenuItem>
+                    )}
+                    {tripId && isOwnerOrColead && (
+                      <DropdownMenuItem asChild className="rounded-xl m-1 gap-2.5 p-2.5 text-sm cursor-pointer">
+                        <Link to={`/trips/${tripId}/settings`}><Settings className="h-4 w-4" /><span>Trip Settings</span></Link>
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem asChild className="rounded-xl m-1 gap-2.5 p-2.5 text-sm cursor-pointer">
+                      <Link to="/profile"><User className="h-4 w-4" /><span>Profile</span></Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator className="bg-white/10" />
+                    <DropdownMenuItem onClick={handleSignOut}
+                      className="rounded-xl m-1 gap-2.5 p-2.5 text-destructive focus:text-destructive focus:bg-destructive/10 text-sm">
+                      <LogOut className="h-4 w-4" /><span>Sign out</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
             </div>
 
