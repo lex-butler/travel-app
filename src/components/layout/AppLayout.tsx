@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, Outlet, useNavigate, useLocation, useParams } from 'react-router-dom'
 import { Plane, LogOut, User, Map, Settings, Menu } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -66,6 +66,7 @@ export default function AppLayout() {
 
   const isLg = useMediaQuery('(min-width: 1024px)')
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const touchStartX = useRef(0)
 
   // Close drawer when screen hits lg breakpoint
   useEffect(() => {
@@ -112,6 +113,12 @@ export default function AppLayout() {
         variants={mainVariants}
         animate={animateState}
         style={{ transformOrigin: 'left center', transformStyle: 'preserve-3d' }}
+        onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX }}
+        onTouchEnd={(e) => {
+          if (drawerOpen && !isLg && e.changedTouches[0].clientX - touchStartX.current < -60) {
+            setDrawerOpen(false)
+          }
+        }}
       >
         {/* Scrollable content inside the shell */}
         <div className="flex flex-col h-full overflow-y-auto">
@@ -119,25 +126,30 @@ export default function AppLayout() {
           {/* ── HEADER ── */}
           <header
             className={cn(
-              'sticky top-0 z-50 px-4 sm:px-6 lg:px-8 pb-3',
+              'sticky top-0 z-50 px-4 sm:px-6 lg:px-8 pb-3 bg-background',
               drawerOpen && !isLg && 'pointer-events-none',
             )}
             style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
           >
             {/* ── Mobile header (< lg) ── */}
             <div className="flex lg:hidden items-center glass h-14 rounded-2xl shadow-lg shadow-primary/5 px-4 relative animate-slide-down">
-              {/* Hamburger */}
-              <button
-                className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-xl hover:bg-white/8 transition-colors"
-                onClick={() => setDrawerOpen(true)}
-              >
-                <Menu className="h-5 w-5" />
-              </button>
+              {/* Hamburger — hidden on the trips list page */}
+              {!isOnTripsPage && (
+                <button
+                  className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-xl hover:bg-white/8 transition-colors"
+                  onClick={() => setDrawerOpen(true)}
+                >
+                  <Menu className="h-5 w-5" />
+                </button>
+              )}
 
-              {/* Centered logo */}
+              {/* Logo — absolutely centered when hamburger is present, normal flex otherwise */}
               <Link
                 to="/trips"
-                className="pointer-events-auto absolute left-1/2 -translate-x-1/2 flex items-center gap-2 font-bold text-base tracking-tight group"
+                className={cn(
+                  'pointer-events-auto flex items-center gap-2 font-bold text-base tracking-tight group',
+                  !isOnTripsPage && 'absolute left-1/2 -translate-x-1/2',
+                )}
               >
                 <div className="flex h-8 w-8 items-center justify-center rounded-xl premium-gradient text-white shadow-md shadow-primary/10 transition-transform group-hover:scale-105">
                   <Plane className="h-4 w-4" />

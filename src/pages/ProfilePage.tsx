@@ -1,8 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
-import { updateProfile } from 'firebase/auth'
-import { MapPin, Plus, Loader2, Camera, Trash2, Copy, ExternalLink } from 'lucide-react'
+import {
+  updateProfile,
+  updateEmail,
+  updatePassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+} from 'firebase/auth'
+import { MapPin, Plus, Loader2, Camera, Trash2, Copy, ExternalLink, Pencil, X, Lock, Eye, EyeOff } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { db, storage, auth } from '@/config/firebase'
 import { useAuthStore } from '@/stores/authStore'
@@ -118,7 +124,7 @@ export function WalletCard({ method, onClick }: { method: PaymentMethod; onClick
   )
 }
 
-// ─── Card detail view (pulled out of wallet) ──────────────────────────────────
+// ─── Card detail view (unified card + QR, tap card to dismiss) ────────────────
 
 function CardDetail({
   method,
@@ -145,57 +151,69 @@ function CardDetail({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 24, scale: 0.96 }}
       transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-      className="space-y-4"
+      className="space-y-3"
     >
-      {/* Full card — tap anywhere on card to go back */}
+      {/* Unified card + QR container — tap the card to go back */}
       <div
-        onClick={onClose}
-        className="relative w-full rounded-[22px] overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
-        style={{
-          aspectRatio: '1.586',
-          background: `linear-gradient(145deg, ${cfg.from} 0%, ${cfg.to} 100%)`,
-          boxShadow: `0 40px 80px -12px ${cfg.shadow}65`,
-          transform: 'translateY(-4px)',
-        }}
+        className="w-full rounded-[22px] overflow-hidden"
+        style={{ boxShadow: `0 40px 80px -12px ${cfg.shadow}65` }}
       >
+        {/* Card section */}
         <div
-          className="absolute inset-0 pointer-events-none"
-          style={{ background: 'linear-gradient(145deg, rgba(255,255,255,0.2) 0%, transparent 45%)' }}
-        />
-        <div className="absolute -top-10 -right-10 h-44 w-44 rounded-full"
-          style={{ background: 'rgba(255,255,255,0.07)' }} />
+          onClick={onClose}
+          className="relative w-full cursor-pointer active:opacity-90 transition-opacity"
+          style={{
+            aspectRatio: '1.586',
+            background: `linear-gradient(145deg, ${cfg.from} 0%, ${cfg.to} 100%)`,
+          }}
+        >
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{ background: 'linear-gradient(145deg, rgba(255,255,255,0.2) 0%, transparent 45%)' }}
+          />
+          <div className="absolute -top-10 -right-10 h-44 w-44 rounded-full"
+            style={{ background: 'rgba(255,255,255,0.07)' }} />
 
-        <div className="absolute inset-0 p-5 flex flex-col justify-between">
-          {/* Logo — top left */}
-          <div className="flex items-start justify-between">
-            <ClearbitLogo type={method.type} className="h-12 w-12 rounded-xl" />
-            <button
-              onClick={(e) => { e.stopPropagation(); onDelete() }}
-              className="h-7 w-7 rounded-full flex items-center justify-center transition-colors active:scale-90"
-              style={{ background: 'rgba(0,0,0,0.22)' }}
-            >
-              <Trash2 className="h-3.5 w-3.5 text-white" />
-            </button>
+          <div className="absolute inset-0 p-5 flex flex-col justify-between">
+            {/* Logo — top left + delete top right */}
+            <div className="flex items-start justify-between">
+              <ClearbitLogo type={method.type} className="h-12 w-12 rounded-xl" />
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete() }}
+                className="h-7 w-7 rounded-full flex items-center justify-center transition-colors active:scale-90"
+                style={{ background: 'rgba(0,0,0,0.22)' }}
+              >
+                <Trash2 className="h-3.5 w-3.5 text-white" />
+              </button>
+            </div>
+            {/* Handle — bottom */}
+            <div className="space-y-0.5">
+              <p className="text-white/50 text-[9px] font-black uppercase tracking-[0.25em]">{cfg.label}</p>
+              <p className="text-white text-[1.4rem] font-black tracking-tight leading-tight">{method.handle}</p>
+              {method.label && <p className="text-white/45 text-[10px]">{method.label}</p>}
+            </div>
           </div>
-          {/* Handle — bottom */}
-          <div className="space-y-0.5">
-            <p className="text-white/50 text-[9px] font-black uppercase tracking-[0.25em]">{cfg.label}</p>
-            <p className="text-white text-[1.4rem] font-black tracking-tight leading-tight">{method.handle}</p>
-            {method.label && <p className="text-white/45 text-[10px]">{method.label}</p>}
+
+          {/* "Tap to close" hint */}
+          <div className="absolute bottom-3 right-4 flex items-center gap-1 opacity-40">
+            <span className="text-[8px] font-black uppercase tracking-widest text-white">tap to close</span>
+          </div>
+        </div>
+
+        {/* QR section — seamlessly connected below the card */}
+        <div
+          className="flex flex-col items-center gap-4 py-7 px-6"
+          style={{ background: 'rgba(10,10,16,0.92)' }}
+        >
+          <QRCodeDisplay method={method} />
+          <div className="text-center">
+            <p className="font-black text-sm text-white">{method.handle}</p>
+            <p className="text-[10px] text-white/40 uppercase tracking-wider mt-0.5">{cfg.label}</p>
           </div>
         </div>
       </div>
 
-      {/* QR code panel */}
-      <div className="flex flex-col items-center gap-4 py-6 px-4 rounded-3xl glass border-white/20">
-        <QRCodeDisplay method={method} />
-        <div className="text-center">
-          <p className="font-black text-sm">{method.handle}</p>
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">{cfg.label}</p>
-        </div>
-      </div>
-
-      {/* Action buttons */}
+      {/* Action button */}
       <div className="flex gap-2">
         {deepLink ? (
           <Button
@@ -247,54 +265,63 @@ function WalletStack({
   if (methods.length === 0) return null
 
   const selectedMethod = methods.find((m) => m.id === selectedId)
-
-  // ── Detail view ──
-  if (selectedMethod) {
-    return (
-      <AnimatePresence mode="wait">
-        <CardDetail
-          key={selectedMethod.id}
-          method={selectedMethod}
-          onClose={() => setSelectedId(null)}
-          onDelete={() => { onDelete(selectedMethod.id); setSelectedId(null) }}
-        />
-      </AnimatePresence>
-    )
-  }
-
-  // ── Stack view ──
   const PEEK = 68
   const containerH = cardH > 0 ? cardH + PEEK * (methods.length - 1) : undefined
 
   return (
-    <div className="space-y-3">
-      <div
-        ref={containerRef}
-        className="relative"
-        style={{ height: containerH, transition: 'height 0.4s ease' }}
-      >
-        {methods.map((method, index) => (
+    <AnimatePresence mode="wait">
+      {selectedMethod ? (
+        <motion.div
+          key="detail"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+        >
+          <CardDetail
+            method={selectedMethod}
+            onClose={() => setSelectedId(null)}
+            onDelete={() => { onDelete(selectedMethod.id); setSelectedId(null) }}
+          />
+        </motion.div>
+      ) : (
+        <motion.div
+          key="stack"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+          className="space-y-3"
+        >
           <div
-            key={method.id}
-            data-measure={index === 0 ? '' : undefined}
-            className={cn('w-full', cardH > 0 ? 'absolute' : index === 0 ? 'relative' : 'hidden')}
-            style={cardH > 0 ? {
-              top: index * PEEK,
-              zIndex: methods.length - index,
-              transition: 'top 0.42s cubic-bezier(0.34, 1.56, 0.64, 1)',
-            } : {}}
+            ref={containerRef}
+            className="relative"
+            style={{ height: containerH, transition: 'height 0.4s ease' }}
           >
-            <WalletCard method={method} onClick={() => setSelectedId(method.id)} />
+            {methods.map((method, index) => (
+              <div
+                key={method.id}
+                data-measure={index === 0 ? '' : undefined}
+                className={cn('w-full', cardH > 0 ? 'absolute' : index === 0 ? 'relative' : 'hidden')}
+                style={cardH > 0 ? {
+                  top: index * PEEK,
+                  zIndex: methods.length - index,
+                  transition: 'top 0.42s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                } : {}}
+              >
+                <WalletCard method={method} onClick={() => setSelectedId(method.id)} />
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      {methods.length > 1 && (
-        <p className="text-center text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-          {methods.length} cards · tap to view
-        </p>
+          {methods.length > 1 && (
+            <p className="text-center text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+              {methods.length} cards · tap to view
+            </p>
+          )}
+        </motion.div>
       )}
-    </div>
+    </AnimatePresence>
   )
 }
 
@@ -321,20 +348,59 @@ async function geocodeCity(name: string): Promise<{ lat: number; lng: number } |
   }
 }
 
+// ─── Password field with show/hide ───────────────────────────────────────────
+
+function PasswordInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  const [show, setShow] = useState(false)
+  return (
+    <div className="relative">
+      <Input
+        type={show ? 'text' : 'password'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="rounded-xl h-11 pr-10"
+      />
+      <button
+        type="button"
+        onClick={() => setShow(!show)}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+      >
+        {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </button>
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ProfilePage() {
   const firebaseUser = useAuthStore((s) => s.user)
   const [profile, setProfile] = useState<AppUser | null>(null)
-  const [cityInput, setCityInput] = useState('')
-  const [savingCity, setSavingCity] = useState(false)
-  const [cityError, setCityError] = useState('')
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Account edit state
+  const [editingAccount, setEditingAccount] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [editCity, setEditCity] = useState('')
+  const [savingAccount, setSavingAccount] = useState(false)
+  const [accountError, setAccountError] = useState('')
+
+  // Password change state
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false)
+  const [currentPw, setCurrentPw] = useState('')
+  const [newPw, setNewPw] = useState('')
+  const [confirmPw, setConfirmPw] = useState('')
+  const [pwError, setPwError] = useState('')
+  const [savingPw, setSavingPw] = useState(false)
+
+  // Add method state
   const [showAddMethod, setShowAddMethod] = useState(false)
   const [newMethodType, setNewMethodType] = useState<PaymentMethodType>('venmo')
   const [newHandle, setNewHandle] = useState('')
   const [savingMethod, setSavingMethod] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!firebaseUser) return
@@ -342,10 +408,91 @@ export default function ProfilePage() {
       if (snap.exists()) {
         const data = { id: snap.id, ...snap.data() } as AppUser
         setProfile(data)
-        setCityInput(data.homeCity ?? '')
       }
     })
   }, [firebaseUser])
+
+  const isGoogleUser = (firebaseUser?.providerData ?? []).some(p => p.providerId === 'google.com')
+
+  function startEdit() {
+    setEditName(firebaseUser?.displayName ?? '')
+    setEditEmail(firebaseUser?.email ?? '')
+    setEditCity(profile?.homeCity ?? '')
+    setAccountError('')
+    setEditingAccount(true)
+  }
+
+  function cancelEdit() {
+    setEditingAccount(false)
+    setAccountError('')
+  }
+
+  async function handleSaveAccount() {
+    if (!firebaseUser || !auth.currentUser) return
+    setSavingAccount(true)
+    setAccountError('')
+    try {
+      const nameChanged = editName.trim() && editName.trim() !== firebaseUser.displayName
+      const cityChanged = editCity.trim() !== (profile?.homeCity ?? '')
+      const emailChanged = !isGoogleUser && editEmail.trim() && editEmail.trim() !== firebaseUser.email
+
+      if (nameChanged) {
+        await updateProfile(auth.currentUser, { displayName: editName.trim() })
+        await updateDoc(doc(db, 'users', firebaseUser.uid), { displayName: editName.trim() })
+        useAuthStore.getState().setUser(auth.currentUser)
+      }
+
+      if (emailChanged) {
+        await updateEmail(auth.currentUser, editEmail.trim())
+        await updateDoc(doc(db, 'users', firebaseUser.uid), { email: editEmail.trim() })
+      }
+
+      if (cityChanged && editCity.trim()) {
+        const geo = await geocodeCity(editCity.trim())
+        if (!geo) { setAccountError('City not found — check the spelling and try again'); return }
+        await updateUserHomeCity(firebaseUser.uid, editCity.trim(), geo.lat, geo.lng)
+        setProfile(prev => prev ? { ...prev, homeCity: editCity.trim(), homeLat: geo.lat, homeLng: geo.lng } : prev)
+      } else if (cityChanged && !editCity.trim()) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        setProfile(prev => prev ? (({ homeCity: _hc, homeLat: _hl, homeLng: _hlng, ...rest }) => rest)(prev) as AppUser : prev)
+      }
+
+      setEditingAccount(false)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to save'
+      if (msg.includes('requires-recent-login')) {
+        setAccountError('Please sign out and sign back in before changing your email.')
+      } else {
+        setAccountError(msg)
+      }
+    } finally {
+      setSavingAccount(false)
+    }
+  }
+
+  async function handlePasswordChange() {
+    if (!firebaseUser || !auth.currentUser || !firebaseUser.email) return
+    if (newPw !== confirmPw) { setPwError('Passwords do not match'); return }
+    if (newPw.length < 6) { setPwError('Password must be at least 6 characters'); return }
+    setSavingPw(true)
+    setPwError('')
+    try {
+      const cred = EmailAuthProvider.credential(firebaseUser.email, currentPw)
+      await reauthenticateWithCredential(auth.currentUser, cred)
+      await updatePassword(auth.currentUser, newPw)
+      setShowPasswordDialog(false)
+      setCurrentPw(''); setNewPw(''); setConfirmPw('')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed'
+      if (msg.includes('wrong-password') || msg.includes('invalid-credential')) {
+        setPwError('Current password is incorrect')
+      } else {
+        setPwError(msg)
+      }
+    } finally {
+      setSavingPw(false)
+    }
+  }
 
   async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -364,20 +511,6 @@ export default function ProfilePage() {
     }
   }
 
-  async function handleSaveCity() {
-    if (!firebaseUser || !cityInput.trim()) return
-    setSavingCity(true)
-    setCityError('')
-    try {
-      const geo = await geocodeCity(cityInput.trim())
-      if (!geo) { setCityError('City not found — check the spelling and try again'); return }
-      await updateUserHomeCity(firebaseUser.uid, cityInput.trim(), geo.lat, geo.lng)
-      setProfile((prev) => prev ? { ...prev, homeCity: cityInput.trim(), homeLat: geo.lat, homeLng: geo.lng } : prev)
-    } finally {
-      setSavingCity(false)
-    }
-  }
-
   async function handleAddMethod() {
     if (!firebaseUser || !newHandle.trim() || !profile) return
     setSavingMethod(true)
@@ -385,7 +518,7 @@ export default function ProfilePage() {
       const method: PaymentMethod = { id: crypto.randomUUID(), type: newMethodType, handle: newHandle.trim() }
       const updated = [...(profile.paymentMethods ?? []), method]
       await updatePaymentMethods(firebaseUser.uid, updated)
-      setProfile((prev) => prev ? { ...prev, paymentMethods: updated } : prev)
+      setProfile(prev => prev ? { ...prev, paymentMethods: updated } : prev)
       setShowAddMethod(false)
       setNewHandle('')
     } finally {
@@ -395,19 +528,19 @@ export default function ProfilePage() {
 
   async function handleDeleteMethod(id: string) {
     if (!firebaseUser || !profile) return
-    const updated = (profile.paymentMethods ?? []).filter((m) => m.id !== id)
+    const updated = (profile.paymentMethods ?? []).filter(m => m.id !== id)
     await updatePaymentMethods(firebaseUser.uid, updated)
-    setProfile((prev) => prev ? { ...prev, paymentMethods: updated } : prev)
+    setProfile(prev => prev ? { ...prev, paymentMethods: updated } : prev)
   }
 
   if (!firebaseUser) return null
   const methods = profile?.paymentMethods ?? []
 
   return (
-    <div className="max-w-md mx-auto pb-10 space-y-8">
+    <div className="max-w-md mx-auto pb-10 space-y-6">
 
       {/* ── Avatar ── */}
-      <div className="flex flex-col items-center gap-4 pt-4">
+      <div className="flex flex-col items-center gap-3 pt-4">
         <div className="relative">
           <Avatar className="h-28 w-28 border-4 border-white/60 shadow-2xl shadow-black/20">
             <AvatarImage src={firebaseUser.photoURL ?? undefined} />
@@ -432,29 +565,108 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* ── Home City ── */}
-      <Card className="p-5 glass border-white/40 rounded-3xl space-y-3">
-        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-          <MapPin className="h-3.5 w-3.5" /> Home City
-        </p>
-        <p className="text-xs text-muted-foreground">Used to estimate travel times to destinations</p>
-        <div className="flex gap-2">
-          <Input
-            value={cityInput}
-            onChange={(e) => { setCityInput(e.target.value); setCityError('') }}
-            onKeyDown={(e) => e.key === 'Enter' && handleSaveCity()}
-            placeholder="e.g. New York, NY"
-            className="rounded-xl h-11 flex-1"
-          />
-          <Button
-            onClick={handleSaveCity}
-            disabled={savingCity || !cityInput.trim() || cityInput.trim() === profile?.homeCity}
-            className="rounded-xl h-11 px-5 font-black"
-          >
-            {savingCity ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
-          </Button>
+      {/* ── Account Info ── */}
+      <Card className="p-5 glass border-white/40 rounded-3xl">
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Account</p>
+          {!editingAccount && (
+            <button
+              onClick={startEdit}
+              className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-primary hover:text-primary/80 transition-colors"
+            >
+              <Pencil className="h-3 w-3" /> Edit
+            </button>
+          )}
         </div>
-        {cityError && <p className="text-[11px] text-destructive font-bold">{cityError}</p>}
+
+        {!editingAccount ? (
+          /* ── Read view ── */
+          <div className="space-y-3">
+            <InfoRow label="Name" value={firebaseUser.displayName ?? '—'} />
+            <InfoRow label="Email" value={firebaseUser.email ?? '—'} />
+            {profile?.homeCity && (
+              <InfoRow label="Home City" value={profile.homeCity} icon={<MapPin className="h-3 w-3" />} />
+            )}
+            {!isGoogleUser && (
+              <button
+                onClick={() => setShowPasswordDialog(true)}
+                className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-primary hover:text-primary/80 transition-colors pt-1"
+              >
+                <Lock className="h-3 w-3" /> Change Password
+              </button>
+            )}
+            {isGoogleUser && (
+              <p className="text-[10px] text-muted-foreground pt-1">
+                Signed in with Google · Name and email managed by Google
+              </p>
+            )}
+          </div>
+        ) : (
+          /* ── Edit view ── */
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Name</label>
+              <Input
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+                placeholder="Display name"
+                className="rounded-xl h-11"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Email</label>
+              {isGoogleUser ? (
+                <div className="flex items-center gap-2 h-11 px-3 rounded-xl bg-muted/40 border border-border/50">
+                  <span className="text-sm text-muted-foreground flex-1 truncate">{firebaseUser.email}</span>
+                  <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground/60 shrink-0">Google</span>
+                </div>
+              ) : (
+                <Input
+                  type="email"
+                  value={editEmail}
+                  onChange={e => setEditEmail(e.target.value)}
+                  placeholder="Email address"
+                  className="rounded-xl h-11"
+                />
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+                <MapPin className="h-3 w-3" /> Home City
+              </label>
+              <Input
+                value={editCity}
+                onChange={e => { setEditCity(e.target.value); setAccountError('') }}
+                placeholder="e.g. New York, NY"
+                className="rounded-xl h-11"
+              />
+            </div>
+
+            {accountError && (
+              <p className="text-[11px] text-destructive font-bold">{accountError}</p>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <Button
+                variant="outline"
+                onClick={cancelEdit}
+                className="flex-1 rounded-xl h-11 font-black"
+                disabled={savingAccount}
+              >
+                <X className="h-4 w-4 mr-1" /> Cancel
+              </Button>
+              <Button
+                onClick={handleSaveAccount}
+                disabled={savingAccount}
+                className="flex-1 rounded-xl h-11 font-black"
+              >
+                {savingAccount ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* ── Wallet ── */}
@@ -487,14 +699,13 @@ export default function ProfilePage() {
       </div>
 
       {/* ── Add Method Dialog ── */}
-      <Dialog open={showAddMethod} onOpenChange={(o) => { if (!o) { setShowAddMethod(false); setNewHandle('') } }}>
+      <Dialog open={showAddMethod} onOpenChange={o => { if (!o) { setShowAddMethod(false); setNewHandle('') } }}>
         <DialogContent className="max-w-sm glass border-white/40 rounded-3xl">
           <DialogHeader>
             <DialogTitle className="font-black uppercase tracking-tight">Add Payment Method</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 pt-2">
-            {/* Type grid */}
             <div className="grid grid-cols-3 gap-2">
               {(Object.keys(PM_CONFIG) as PaymentMethodType[]).map((type) => {
                 const cfg = PM_CONFIG[type]
@@ -523,15 +734,14 @@ export default function ProfilePage() {
               })}
             </div>
 
-            {/* Live card preview */}
             {newHandle.trim() && (
               <WalletCard method={{ id: 'preview', type: newMethodType, handle: newHandle.trim() }} />
             )}
 
             <Input
               value={newHandle}
-              onChange={(e) => setNewHandle(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddMethod()}
+              onChange={e => setNewHandle(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAddMethod()}
               placeholder={PM_CONFIG[newMethodType].placeholder}
               className="rounded-xl h-11"
             />
@@ -546,6 +756,55 @@ export default function ProfilePage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ── Password Change Dialog ── */}
+      <Dialog open={showPasswordDialog} onOpenChange={o => {
+        if (!o) { setShowPasswordDialog(false); setCurrentPw(''); setNewPw(''); setConfirmPw(''); setPwError('') }
+      }}>
+        <DialogContent className="max-w-sm glass border-white/40 rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="font-black uppercase tracking-tight">Change Password</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3 pt-2">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Current Password</label>
+              <PasswordInput value={currentPw} onChange={setCurrentPw} placeholder="Current password" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">New Password</label>
+              <PasswordInput value={newPw} onChange={setNewPw} placeholder="New password" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Confirm New Password</label>
+              <PasswordInput value={confirmPw} onChange={setConfirmPw} placeholder="Confirm new password" />
+            </div>
+
+            {pwError && <p className="text-[11px] text-destructive font-bold">{pwError}</p>}
+
+            <Button
+              onClick={handlePasswordChange}
+              disabled={savingPw || !currentPw || !newPw || !confirmPw}
+              className="w-full rounded-xl h-11 font-black uppercase tracking-widest text-[10px] mt-2"
+            >
+              {savingPw ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Update Password'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// ─── InfoRow helper ───────────────────────────────────────────────────────────
+
+function InfoRow({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between py-1.5 border-b border-white/6 last:border-0">
+      <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+        {icon}{label}
+      </span>
+      <span className="text-sm font-bold truncate max-w-[55%] text-right">{value}</span>
     </div>
   )
 }
